@@ -17,6 +17,7 @@ import {
   getValidMoves,
 } from "@crossway/socket";
 import { roomManager } from "./room-manager";
+import { rateLimiter } from "./rate-limiter";
 
 type GameSocket = Socket<
   ClientToServerEvents,
@@ -121,6 +122,20 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
       return;
     }
 
+    const isNewRoom = !room;
+    const clientIp = socket.data.clientIp;
+
+    if (isNewRoom && clientIp) {
+      const cooldownCheck = rateLimiter.checkRoomCreation(clientIp, true);
+      if (!cooldownCheck.allowed) {
+        socket.emit("room:error", {
+          code: "RATE_LIMIT_ROOM_COOLDOWN",
+          message: cooldownCheck.error ?? "Please wait before creating another room",
+        });
+        return;
+      }
+    }
+
     const result = roomManager.createOrJoinRoom(roomId, playerId, password);
 
     if (!result.success) {
@@ -173,10 +188,22 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
     const roomId = socket.data.roomId;
     const playerColor = socket.data.color;
     const playerId = socket.data.visiblePlayerId;
+    const clientIp = socket.data.clientIp;
 
     if (!roomId || !playerColor || !playerId) {
       socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
       return;
+    }
+
+    if (clientIp) {
+      const moveCheck = rateLimiter.checkMove(clientIp);
+      if (!moveCheck.allowed) {
+        socket.emit("room:error", {
+          code: "RATE_LIMIT_MOVES",
+          message: moveCheck.error ?? "You're making moves too quickly",
+        });
+        return;
+      }
     }
 
     const room = roomManager.getRoom(roomId);
@@ -239,10 +266,22 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
   socket.on("game:settings", (settings) => {
     const roomId = socket.data.roomId;
     const playerId = socket.data.visiblePlayerId;
+    const clientIp = socket.data.clientIp;
 
     if (!roomId || !playerId) {
       socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
       return;
+    }
+
+    if (clientIp) {
+      const eventCheck = rateLimiter.checkEvent(clientIp);
+      if (!eventCheck.allowed) {
+        socket.emit("room:error", {
+          code: "RATE_LIMIT_EVENTS",
+          message: eventCheck.error ?? "Too many requests",
+        });
+        return;
+      }
     }
 
     const updated = roomManager.updateSettings(roomId, playerId, settings);
@@ -264,10 +303,22 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
   socket.on("game:reset", () => {
     const roomId = socket.data.roomId;
     const playerId = socket.data.visiblePlayerId;
+    const clientIp = socket.data.clientIp;
 
     if (!roomId || !playerId) {
       socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
       return;
+    }
+
+    if (clientIp) {
+      const eventCheck = rateLimiter.checkEvent(clientIp);
+      if (!eventCheck.allowed) {
+        socket.emit("room:error", {
+          code: "RATE_LIMIT_EVENTS",
+          message: eventCheck.error ?? "Too many requests",
+        });
+        return;
+      }
     }
 
     const newState = roomManager.resetGame(roomId, playerId);

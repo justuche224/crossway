@@ -20,6 +20,7 @@ import type {
 } from "@crossway/socket";
 import { handleSocketConnection } from "./socket/game-handler";
 import { roomManager } from "./socket/room-manager";
+import { rateLimiter } from "./socket/rate-limiter";
 
 if(!process.env.SERVER_URL) {
 	throw new Error("SERVER_URL is not set");
@@ -156,6 +157,27 @@ const io = new Server<
 });
 
 io.on("connection", (socket) => {
+	const forwarded = socket.handshake.headers["x-forwarded-for"];
+	const ip = typeof forwarded === "string"
+		? forwarded.split(",")[0]?.trim() ?? socket.handshake.address
+		: socket.handshake.address;
+
+	const connectionCheck = rateLimiter.addConnection(ip, socket.id);
+	if (!connectionCheck.allowed) {
+		socket.emit("room:error", {
+			code: "RATE_LIMIT_CONNECTIONS",
+			message: connectionCheck.error ?? "Too many connections",
+		});
+		socket.disconnect(true);
+		return;
+	}
+
+	socket.data.clientIp = ip;
+
+	socket.on("disconnect", () => {
+		rateLimiter.removeConnection(ip, socket.id);
+	});
+
 	handleSocketConnection(io, socket);
 });
 

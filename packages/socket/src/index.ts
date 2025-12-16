@@ -97,9 +97,10 @@ export interface ServerToClientEvents {
 export interface InterServerEvents {}
 
 export interface SocketData {
-visiblePlayerId: string;
+  visiblePlayerId: string;
   roomId: string | null;
   color: Player | null;
+  clientIp: string;
 }
 
 export const RECONNECT_GRACE_PERIOD_MS = 30000;
