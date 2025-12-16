@@ -1,8 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/online/")({
   component: OnlineLobbyComponent,
@@ -23,70 +20,116 @@ function OnlineLobbyComponent() {
 
   function handleCreateRoom() {
     const code = generateRoomCode();
-    navigate({ to: `/play/crossway/online/${code}` });
+    navigate({ to: `/online/${code}` });
   }
 
   function handleJoinRoom() {
     if (roomCode.length === 6) {
-      navigate({ to: `/play/crossway/online/${roomCode.toUpperCase()}` });
+      navigate({ to: `/online/${roomCode.toUpperCase()}` });
     }
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 flex flex-col items-center justify-center gap-8">
-      <Link to="/games/crossway">
-        <Button variant="ghost" size="sm">
-          ← Back to Crossway
-        </Button>
-      </Link>
-
-      <h1 className="text-2xl font-bold text-foreground">
-        Crossway - Online PvP
-      </h1>
-
-      <div className="flex flex-col gap-6 w-full max-w-md">
-        <div className="p-6 bg-card border border-border rounded-lg space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Create Room</h2>
-          <p className="text-sm text-muted-foreground">
-            Create a new room and share the code with your friend
-          </p>
-          <Button onClick={handleCreateRoom} className="w-full">
-            Create New Room
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-sm text-muted-foreground">or</span>
-          <div className="flex-1 h-px bg-border" />
-        </div>
-
-        <div className="p-6 bg-card border border-border rounded-lg space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Join Room</h2>
-          <p className="text-sm text-muted-foreground">
-            Enter a room code to join an existing game
-          </p>
-          <div className="space-y-2">
-            <Label htmlFor="roomCode">Room Code</Label>
-            <Input
-              id="roomCode"
-              placeholder="Enter 6-character code"
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              maxLength={6}
-              className="font-mono uppercase text-center text-lg tracking-widest"
-            />
-          </div>
-          <Button
-            onClick={handleJoinRoom}
-            disabled={roomCode.length !== 6}
-            className="w-full"
-            variant="secondary"
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b border-border">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+          <Link
+            to="/"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            Join Room
-          </Button>
+            ← Back
+          </Link>
+          <h1 className="text-sm font-medium text-foreground">Online PvP</h1>
+          <div className="w-12" />
         </div>
-      </div>
+      </header>
+
+      {/* Content */}
+      <main className="max-w-4xl mx-auto px-6 py-16">
+        <div className="text-center mb-16">
+          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground font-medium mb-3">
+            Multiplayer
+          </p>
+          <h2 className="text-4xl font-bold text-foreground mb-4">
+            Play Online
+          </h2>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            Create a room and invite a friend, or join an existing game with a
+            room code.
+          </p>
+        </div>
+
+        <div className="max-w-sm mx-auto space-y-12">
+          {/* Create Room */}
+          <div>
+            <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-4">
+              Create Room
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Start a new game and share the code with your friend.
+            </p>
+            <button
+              onClick={handleCreateRoom}
+              className="w-full group flex items-center justify-center gap-3 py-4 bg-foreground text-background font-semibold hover:bg-foreground/90 transition-colors"
+            >
+              <span>Create New Room</span>
+              <span className="group-hover:translate-x-1 transition-transform">
+                →
+              </span>
+            </button>
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              or
+            </span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+
+          {/* Join Room */}
+          <div>
+            <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-4">
+              Join Room
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Enter your friend's room code to join their game.
+            </p>
+
+            <div className="mb-4">
+              <label htmlFor="roomCode" className="sr-only">
+                Room Code
+              </label>
+              <input
+                id="roomCode"
+                type="text"
+                placeholder="XXXXXX"
+                value={roomCode}
+                onChange={(e) =>
+                  setRoomCode(
+                    e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")
+                  )
+                }
+                maxLength={6}
+                className="w-full py-4 px-4 bg-transparent border-b-2 border-border focus:border-foreground outline-none font-mono text-2xl text-center tracking-[0.5em] text-foreground placeholder:text-muted-foreground/30 transition-colors"
+              />
+            </div>
+
+            <button
+              onClick={handleJoinRoom}
+              disabled={roomCode.length !== 6}
+              className="w-full group flex items-center justify-center gap-3 py-4 border-2 border-foreground text-foreground font-semibold hover:bg-foreground hover:text-background disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-foreground transition-all"
+            >
+              <span>Join Room</span>
+              <span className="group-hover:translate-x-1 transition-transform">
+                →
+              </span>
+            </button>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

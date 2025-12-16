@@ -16,12 +16,9 @@ import {
   forfeitGame,
   getRandomMove,
   getMoveCountsPerPlayer,
-  formatMoveNotation,
   getPlayerDangerLevel,
+  type Player,
 } from "@/lib/game-logic";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/online/$roomId")({
   component: OnlineGameComponent,
@@ -35,10 +32,12 @@ function GameBoard({
   state,
   onPositionClick,
   blockedPosition,
+  disabled,
 }: {
   state: GameState;
   onPositionClick: (pos: Position) => void;
   blockedPosition: Position | null;
+  disabled?: boolean;
 }) {
   const validMoves = state.selectedPiece
     ? getValidMoves(state.selectedPiece, state)
@@ -63,7 +62,9 @@ function GameBoard({
   return (
     <svg
       viewBox="0 0 500 300"
-      className="w-full max-w-2xl border border-border rounded-lg bg-card"
+      className={`w-full max-w-2xl border border-border rounded-lg bg-card ${
+        disabled ? "opacity-70 pointer-events-none" : ""
+      }`}
     >
       {connections.map(([from, to]) => (
         <line
@@ -106,8 +107,8 @@ function GameBoard({
         return (
           <g
             key={pos}
-            onClick={() => onPositionClick(pos)}
-            className="cursor-pointer"
+            onClick={() => !disabled && onPositionClick(pos)}
+            className={disabled ? "cursor-not-allowed" : "cursor-pointer"}
           >
             <circle
               cx={x}
@@ -178,38 +179,36 @@ function MoveHistory({ moves }: { moves: Move[] }) {
 
   if (moves.length === 0) {
     return (
-      <div className="w-full max-w-xs p-3 bg-muted/50 rounded-lg">
-        <h3 className="text-sm font-medium text-muted-foreground mb-2">
-          Move History
+      <div className="w-full">
+        <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-3">
+          Moves
         </h3>
-        <p className="text-xs text-muted-foreground/60 italic">No moves yet</p>
+        <p className="text-sm text-muted-foreground/50 italic">No moves yet</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-xs p-3 bg-muted/50 rounded-lg">
-      <h3 className="text-sm font-medium text-muted-foreground mb-2">
-        Move History
+    <div className="w-full">
+      <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-3">
+        Moves
       </h3>
-      <div
-        ref={historyRef}
-        className="max-h-32 overflow-y-auto text-xs space-y-1 scrollbar-thin"
-      >
+      <div ref={historyRef} className="max-h-40 overflow-y-auto space-y-1">
         {moves.map((move, idx) => (
           <div
             key={idx}
-            className={`flex items-center gap-2 px-2 py-1 rounded ${
-              move.player === "blue" ? "bg-blue-500/10" : "bg-red-500/10"
-            }`}
+            className="flex items-center gap-3 py-1.5 border-b border-border/50 last:border-0"
           >
+            <span className="text-xs text-muted-foreground/50 w-5 font-mono">
+              {idx + 1}.
+            </span>
             <div
               className={`w-2 h-2 rounded-full ${
                 move.player === "blue" ? "bg-blue-500" : "bg-red-500"
               }`}
             />
-            <span className="font-mono">
-              {formatMoveNotation(move, idx + 1)}
+            <span className="text-sm font-mono text-foreground">
+              {move.from} → {move.to}
             </span>
           </div>
         ))}
@@ -220,20 +219,21 @@ function MoveHistory({ moves }: { moves: Move[] }) {
 
 function MoveCounter({ moves }: { moves: Move[] }) {
   const counts = getMoveCountsPerPlayer(moves);
-  const total = moves.length;
 
   return (
-    <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
+    <div className="flex items-center gap-6">
       <div className="flex items-center gap-2">
         <div className="w-3 h-3 rounded-full bg-blue-500" />
-        <span className="text-sm font-mono">{counts.blue}</span>
+        <span className="text-sm font-mono font-medium text-foreground">
+          {counts.blue}
+        </span>
       </div>
-      <div className="text-xs text-muted-foreground">
-        Total: <span className="font-mono font-medium">{total}</span>
-      </div>
+      <div className="h-4 w-px bg-border" />
       <div className="flex items-center gap-2">
-        <span className="text-sm font-mono">{counts.red}</span>
         <div className="w-3 h-3 rounded-full bg-red-500" />
+        <span className="text-sm font-mono font-medium text-foreground">
+          {counts.red}
+        </span>
       </div>
     </div>
   );
@@ -246,131 +246,97 @@ function DangerIndicator({ state }: { state: GameState }) {
   if (blueDanger === "safe" && redDanger === "safe") return null;
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center justify-center gap-4 py-2">
       {blueDanger !== "safe" && (
-        <div
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium ${
-            blueDanger === "danger"
-              ? "bg-red-500/20 text-red-500"
-              : "bg-amber-500/20 text-amber-500"
-          }`}
-        >
+        <div className="flex items-center gap-2 text-sm">
           <div className="w-2 h-2 rounded-full bg-blue-500" />
-          {blueDanger === "danger" ? "No moves!" : "Low moves"}
+          <span
+            className={
+              blueDanger === "danger"
+                ? "text-red-500 font-medium"
+                : "text-muted-foreground"
+            }
+          >
+            {blueDanger === "danger" ? "No moves!" : "Low moves"}
+          </span>
         </div>
       )}
       {redDanger !== "safe" && (
-        <div
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium ${
-            redDanger === "danger"
-              ? "bg-red-500/20 text-red-500"
-              : "bg-amber-500/20 text-amber-500"
-          }`}
-        >
+        <div className="flex items-center gap-2 text-sm">
           <div className="w-2 h-2 rounded-full bg-red-500" />
-          {redDanger === "danger" ? "No moves!" : "Low moves"}
+          <span
+            className={
+              redDanger === "danger"
+                ? "text-red-500 font-medium"
+                : "text-muted-foreground"
+            }
+          >
+            {redDanger === "danger" ? "No moves!" : "Low moves"}
+          </span>
         </div>
       )}
     </div>
   );
 }
 
-function RuleCheckboxes({
+function GameSettings({
   enabledRules,
-  onToggle,
+  onToggleRule,
+  blitzEnabled,
+  onToggleBlitz,
+  blitzTimeLimit,
+  onTimeChange,
+  disabled,
 }: {
   enabledRules: RepetitionRule[];
-  onToggle: (rule: RepetitionRule) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-4 p-3 bg-muted/50 rounded-lg">
-      <span className="text-sm font-medium text-muted-foreground">
-        Repetition Rules:
-      </span>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="warning"
-          checked={enabledRules.includes("warning")}
-          onCheckedChange={() => onToggle("warning")}
-        />
-        <Label htmlFor="warning" className="text-sm cursor-pointer">
-          Warning
-        </Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="forfeit"
-          checked={enabledRules.includes("forfeit")}
-          onCheckedChange={() => onToggle("forfeit")}
-        />
-        <Label htmlFor="forfeit" className="text-sm cursor-pointer">
-          Auto-forfeit
-        </Label>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="block"
-          checked={enabledRules.includes("block")}
-          onCheckedChange={() => onToggle("block")}
-        />
-        <Label htmlFor="block" className="text-sm cursor-pointer">
-          Block move
-        </Label>
-      </div>
-    </div>
-  );
-}
-
-function BlitzControls({
-  enabled,
-  onToggle,
-  timeLimit,
-  onTimeChange,
-  timeLeft,
-  isPlaying,
-}: {
-  enabled: boolean;
-  onToggle: () => void;
-  timeLimit: number;
+  onToggleRule: (rule: RepetitionRule) => void;
+  blitzEnabled: boolean;
+  onToggleBlitz: () => void;
+  blitzTimeLimit: number;
   onTimeChange: (time: number) => void;
-  timeLeft: number;
-  isPlaying: boolean;
+  disabled: boolean;
 }) {
-  const percentage = (timeLeft / timeLimit) * 100;
-  const isLow = timeLeft <= 3;
-
   return (
-    <div className="flex flex-col items-center gap-3 p-3 bg-muted/50 rounded-lg w-full max-w-md">
-      <div className="flex items-center gap-4 w-full justify-center">
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="blitz"
-            checked={enabled}
-            onCheckedChange={onToggle}
-            disabled={isPlaying}
-          />
-          <Label
-            htmlFor="blitz"
-            className={`text-sm cursor-pointer font-medium ${
-              enabled ? "text-amber-500" : ""
+    <div className="w-full border-t border-border pt-6">
+      <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-4">
+        Game Settings
+      </h3>
+
+      {/* Blitz Mode */}
+      <div className="mb-6">
+        <button
+          onClick={onToggleBlitz}
+          disabled={disabled}
+          className={`flex items-center gap-3 py-2 transition-colors ${
+            disabled ? "opacity-50 cursor-not-allowed" : ""
+          }`}
+        >
+          <div
+            className={`w-4 h-4 border-2 rounded-sm flex items-center justify-center transition-colors ${
+              blitzEnabled
+                ? "bg-foreground border-foreground"
+                : "border-muted-foreground"
             }`}
           >
+            {blitzEnabled && <span className="text-background text-xs">✓</span>}
+          </div>
+          <span className="text-sm font-medium text-foreground">
             Blitz Mode
-          </Label>
-        </div>
+          </span>
+        </button>
 
-        {enabled && (
-          <div className="flex items-center gap-2">
+        {blitzEnabled && (
+          <div className="mt-3 ml-7 flex items-center gap-2">
             {TIME_OPTIONS.map((time) => (
               <button
                 key={time}
                 onClick={() => onTimeChange(time)}
-                disabled={isPlaying}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  timeLimit === time
-                    ? "bg-amber-500 text-white"
-                    : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
-                } ${isPlaying ? "opacity-50 cursor-not-allowed" : ""}`}
+                disabled={disabled}
+                className={`px-3 py-1.5 text-xs font-medium transition-all ${
+                  blitzTimeLimit === time
+                    ? "border-b-2 border-foreground text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {time}s
               </button>
@@ -379,38 +345,76 @@ function BlitzControls({
         )}
       </div>
 
-      {enabled && isPlaying && (
-        <div className="w-full">
-          <div className="flex justify-between text-xs mb-1">
-            <span
-              className={
-                isLow ? "text-red-500 font-bold" : "text-muted-foreground"
-              }
+      {/* Repetition Rules */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-3">Repetition Rules</p>
+        <div className="space-y-2">
+          {(["warning", "block", "forfeit"] as RepetitionRule[]).map((rule) => (
+            <button
+              key={rule}
+              onClick={() => onToggleRule(rule)}
+              className="flex items-center gap-3 py-1.5 w-full text-left"
             >
-              Time Left
-            </span>
-            <span
-              className={`font-mono ${
-                isLow ? "text-red-500 font-bold animate-pulse" : ""
-              }`}
-            >
-              {timeLeft}s
-            </span>
-          </div>
-          <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-200 ${
-                isLow
-                  ? "bg-red-500"
-                  : percentage > 50
-                  ? "bg-green-500"
-                  : "bg-amber-500"
-              }`}
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
+              <div
+                className={`w-4 h-4 border-2 rounded-sm flex items-center justify-center transition-colors ${
+                  enabledRules.includes(rule)
+                    ? "bg-foreground border-foreground"
+                    : "border-muted-foreground"
+                }`}
+              >
+                {enabledRules.includes(rule) && (
+                  <span className="text-background text-xs">✓</span>
+                )}
+              </div>
+              <span className="text-sm text-foreground capitalize">{rule}</span>
+            </button>
+          ))}
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+function BlitzTimer({
+  timeLeft,
+  timeLimit,
+}: {
+  timeLeft: number;
+  timeLimit: number;
+}) {
+  const percentage = (timeLeft / timeLimit) * 100;
+  const isLow = timeLeft <= 3;
+
+  return (
+    <div className="w-full max-w-md">
+      <div className="flex justify-between text-xs mb-2">
+        <span
+          className={
+            isLow ? "text-red-500 font-medium" : "text-muted-foreground"
+          }
+        >
+          Time
+        </span>
+        <span
+          className={`font-mono ${
+            isLow ? "text-red-500 font-bold animate-pulse" : "text-foreground"
+          }`}
+        >
+          {timeLeft}s
+        </span>
+      </div>
+      <div className="w-full h-1 bg-border rounded-full overflow-hidden">
+        <div
+          className={`h-full transition-all duration-200 ${
+            isLow
+              ? "bg-red-500"
+              : percentage > 50
+              ? "bg-foreground"
+              : "bg-muted-foreground"
+          }`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -425,8 +429,11 @@ function OnlineGameComponent() {
   const [blitzEnabled, setBlitzEnabled] = useState(false);
   const [blitzTimeLimit, setBlitzTimeLimit] = useState(10);
   const [timeLeft, setTimeLeft] = useState(10);
+  const [playerColor] = useState<Player>("blue"); // Would be set by server
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPlayerRef = useRef(state.currentPlayer);
+
+  const isPlayerTurn = state.currentPlayer === playerColor;
 
   const executeRandomMove = useCallback(() => {
     const randomMove = getRandomMove(state);
@@ -578,7 +585,7 @@ function OnlineGameComponent() {
 
   function copyRoomLink() {
     navigator.clipboard.writeText(window.location.href);
-    toast.success("Room link copied to clipboard!");
+    toast.success("Room link copied!");
   }
 
   const isGameOver = state.status !== "playing";
@@ -587,128 +594,169 @@ function OnlineGameComponent() {
   const isPlaying = state.status === "playing" && state.moveHistory.length > 0;
 
   return (
-    <div className="min-h-screen bg-background p-4 flex flex-col items-center gap-4">
-      <Link to="/play/crossway/online">
-        <Button variant="ghost" size="sm">
-          ← Back to Lobby
-        </Button>
-      </Link>
-
-      <h1 className="text-2xl font-bold text-foreground">
-        Crossway - Online PvP
-      </h1>
-
-      <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
-        <span className="text-sm text-muted-foreground">Room:</span>
-        <span className="font-mono font-bold text-foreground">{roomId}</span>
-        <Button variant="ghost" size="sm" onClick={copyRoomLink}>
-          Copy Link
-        </Button>
-      </div>
-
-      <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-center">
-        <p className="text-sm text-amber-500">
-          WebSocket integration pending - currently playing locally
-        </p>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <div
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-            state.currentPlayer === "blue" && state.status === "playing"
-              ? "bg-blue-500/20 ring-2 ring-blue-500"
-              : "bg-muted"
-          }`}
-        >
-          <div className="w-4 h-4 rounded-full bg-blue-500" />
-          <span className="text-foreground font-medium">Blue</span>
-          {enabledRules.includes("warning") &&
-            state.repetitionWarnings.blue > 0 && (
-              <span className="text-xs text-amber-500">
-                ({state.repetitionWarnings.blue} warnings)
-              </span>
-            )}
-        </div>
-
-        <span className="text-muted-foreground">vs</span>
-
-        <div
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-            state.currentPlayer === "red" && state.status === "playing"
-              ? "bg-red-500/20 ring-2 ring-red-500"
-              : "bg-muted"
-          }`}
-        >
-          <div className="w-4 h-4 rounded-full bg-red-500" />
-          <span className="text-foreground font-medium">Red</span>
-          {enabledRules.includes("warning") &&
-            state.repetitionWarnings.red > 0 && (
-              <span className="text-xs text-amber-500">
-                ({state.repetitionWarnings.red} warnings)
-              </span>
-            )}
-        </div>
-      </div>
-
-      <MoveCounter moves={state.moveHistory} />
-
-      <DangerIndicator state={state} />
-
-      {isGameOver && (
-        <div
-          className={`px-6 py-3 rounded-lg text-lg font-bold ${
-            state.status === "blue_wins" || state.status === "red_forfeit"
-              ? "bg-blue-500/20 text-blue-500"
-              : "bg-red-500/20 text-red-500"
-          }`}
-        >
-          {state.status === "blue_wins"
-            ? "Blue Wins!"
-            : state.status === "red_wins"
-            ? "Red Wins!"
-            : state.status === "blue_forfeit"
-            ? "Red Wins! (Blue forfeited)"
-            : "Blue Wins! (Red forfeited)"}
-        </div>
-      )}
-
-      <BlitzControls
-        enabled={blitzEnabled}
-        onToggle={handleBlitzToggle}
-        timeLimit={blitzTimeLimit}
-        onTimeChange={handleTimeChange}
-        timeLeft={timeLeft}
-        isPlaying={isPlaying}
-      />
-
-      <RuleCheckboxes enabledRules={enabledRules} onToggle={toggleRule} />
-
-      <div className="flex flex-col lg:flex-row items-start gap-4 w-full max-w-4xl justify-center">
-        <GameBoard
-          state={state}
-          onPositionClick={handlePositionClick}
-          blockedPosition={blockedPosition}
-        />
-        <MoveHistory moves={state.moveHistory} />
-      </div>
-
-      <div className="text-sm text-muted-foreground text-center max-w-md">
-        {state.status === "playing" ? (
-          state.selectedPiece ? (
-            <span>
-              Click a highlighted position to move, or click another piece
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b border-border">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <Link
+            to="/online"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Lobby
+          </Link>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">Room</span>
+            <span className="font-mono font-bold text-foreground tracking-wider">
+              {roomId}
             </span>
-          ) : (
-            <span>Click one of your pieces to select it</span>
-          )
-        ) : (
-          <span>
-            Game over{isForfeit ? " by forfeit" : ""}! Click reset to play again
+            <button
+              onClick={copyRoomLink}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border rounded hover:border-foreground/30"
+            >
+              Copy Link
+            </button>
+          </div>
+          <div className="w-20" />
+        </div>
+      </header>
+
+      {/* Connection Status */}
+      <div className="border-b border-border bg-secondary/30">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          <span className="text-xs text-muted-foreground">
+            WebSocket integration pending — playing locally for now
           </span>
-        )}
+        </div>
       </div>
 
-      <Button onClick={handleReset}>Reset Game</Button>
+      <main className="max-w-5xl mx-auto px-6 py-8">
+        {/* Status Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 pb-6 border-b border-border">
+          {/* Player Indicators */}
+          <div className="flex items-center gap-4">
+            <div
+              className={`flex items-center gap-2 px-3 py-2 transition-all ${
+                state.currentPlayer === "blue" && state.status === "playing"
+                  ? "border-b-2 border-blue-500"
+                  : ""
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-blue-500" />
+              <span className="text-sm font-medium text-foreground">Blue</span>
+              {playerColor === "blue" && (
+                <span className="text-xs text-muted-foreground">(you)</span>
+              )}
+              {state.currentPlayer === "blue" && state.status === "playing" && (
+                <span className="text-xs text-muted-foreground animate-pulse">
+                  ●
+                </span>
+              )}
+            </div>
+
+            <span className="text-muted-foreground text-sm">vs</span>
+
+            <div
+              className={`flex items-center gap-2 px-3 py-2 transition-all ${
+                state.currentPlayer === "red" && state.status === "playing"
+                  ? "border-b-2 border-red-500"
+                  : ""
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-red-500" />
+              <span className="text-sm font-medium text-foreground">Red</span>
+              {playerColor === "red" && (
+                <span className="text-xs text-muted-foreground">(you)</span>
+              )}
+              {state.currentPlayer === "red" && state.status === "playing" && (
+                <span className="text-xs text-muted-foreground animate-pulse">
+                  ●
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Move Counter */}
+          <MoveCounter moves={state.moveHistory} />
+        </div>
+
+        {/* Blitz Timer */}
+        {blitzEnabled && isPlaying && (
+          <div className="mb-6 flex justify-center">
+            <BlitzTimer timeLeft={timeLeft} timeLimit={blitzTimeLimit} />
+          </div>
+        )}
+
+        {/* Danger Indicator */}
+        <DangerIndicator state={state} />
+
+        {/* Game Over Banner */}
+        {isGameOver && (
+          <div className="text-center py-6 mb-6 border-y border-border">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">
+              Game Over{isForfeit ? " — Forfeit" : ""}
+            </p>
+            <p className="text-2xl font-bold text-foreground">
+              {state.status === "blue_wins" || state.status === "red_forfeit"
+                ? "Blue Wins! 🔵"
+                : "Red Wins! 🔴"}
+            </p>
+          </div>
+        )}
+
+        {/* Game Area */}
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Board Section */}
+          <div className="flex-1">
+            <GameBoard
+              state={state}
+              onPositionClick={handlePositionClick}
+              blockedPosition={blockedPosition}
+              disabled={!isPlayerTurn && state.status === "playing"}
+            />
+
+            {/* Hint Text */}
+            <p className="text-center text-sm text-muted-foreground mt-4">
+              {state.status === "playing"
+                ? isPlayerTurn
+                  ? state.selectedPiece
+                    ? "Click a highlighted position to move"
+                    : "Your turn — select a piece"
+                  : "Waiting for opponent..."
+                : ""}
+            </p>
+          </div>
+
+          {/* Sidebar */}
+          <div className="lg:w-64 space-y-6">
+            <MoveHistory moves={state.moveHistory} />
+
+            {/* Actions */}
+            <div>
+              <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-3">
+                Actions
+              </h3>
+              <button
+                onClick={handleReset}
+                className="w-full py-2.5 text-sm text-left px-3 border-b border-border hover:border-foreground/30 transition-colors text-foreground font-medium"
+              >
+                {isGameOver ? "Play Again →" : "Reset Game →"}
+              </button>
+            </div>
+
+            {/* Settings */}
+            <GameSettings
+              enabledRules={enabledRules}
+              onToggleRule={toggleRule}
+              blitzEnabled={blitzEnabled}
+              onToggleBlitz={handleBlitzToggle}
+              blitzTimeLimit={blitzTimeLimit}
+              onTimeChange={handleTimeChange}
+              disabled={isPlaying}
+            />
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

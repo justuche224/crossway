@@ -16,7 +16,6 @@ import {
   type Player,
 } from "@/lib/game-logic";
 import { type AIDifficulty, getAIMove } from "@/lib/game-ai";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/solo")({
@@ -154,35 +153,36 @@ function GameBoard({
 function MoveHistory({ moves }: { moves: Move[] }) {
   if (moves.length === 0) {
     return (
-      <div className="w-full max-w-xs p-3 bg-muted/50 rounded-lg">
-        <h3 className="text-sm font-medium text-muted-foreground mb-2">
-          Move History
+      <div className="w-full">
+        <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-3">
+          Moves
         </h3>
-        <p className="text-xs text-muted-foreground/60 italic">No moves yet</p>
+        <p className="text-sm text-muted-foreground/50 italic">No moves yet</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-xs p-3 bg-muted/50 rounded-lg">
-      <h3 className="text-sm font-medium text-muted-foreground mb-2">
-        Move History
+    <div className="w-full">
+      <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-3">
+        Moves
       </h3>
-      <div className="max-h-32 overflow-y-auto text-xs space-y-1">
+      <div className="max-h-40 overflow-y-auto space-y-1">
         {moves.map((move, idx) => (
           <div
             key={idx}
-            className={`flex items-center gap-2 px-2 py-1 rounded ${
-              move.player === "blue" ? "bg-blue-500/10" : "bg-red-500/10"
-            }`}
+            className="flex items-center gap-3 py-1.5 border-b border-border/50 last:border-0"
           >
+            <span className="text-xs text-muted-foreground/50 w-5 font-mono">
+              {idx + 1}.
+            </span>
             <div
               className={`w-2 h-2 rounded-full ${
                 move.player === "blue" ? "bg-blue-500" : "bg-red-500"
               }`}
             />
-            <span className="font-mono">
-              {formatMoveNotation(move, idx + 1)}
+            <span className="text-sm font-mono text-foreground">
+              {move.from} → {move.to}
             </span>
           </div>
         ))}
@@ -191,22 +191,35 @@ function MoveHistory({ moves }: { moves: Move[] }) {
   );
 }
 
-function MoveCounter({ moves }: { moves: Move[] }) {
+function MoveCounter({
+  moves,
+  playerColor,
+}: {
+  moves: Move[];
+  playerColor: Player;
+}) {
   const counts = getMoveCountsPerPlayer(moves);
-  const total = moves.length;
 
   return (
-    <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
+    <div className="flex items-center gap-6">
       <div className="flex items-center gap-2">
         <div className="w-3 h-3 rounded-full bg-blue-500" />
-        <span className="text-sm font-mono">{counts.blue}</span>
+        <span className="text-sm font-mono font-medium text-foreground">
+          {counts.blue}
+        </span>
+        {playerColor === "blue" && (
+          <span className="text-xs text-muted-foreground">(you)</span>
+        )}
       </div>
-      <div className="text-xs text-muted-foreground">
-        Total: <span className="font-mono font-medium">{total}</span>
-      </div>
+      <div className="h-4 w-px bg-border" />
       <div className="flex items-center gap-2">
-        <span className="text-sm font-mono">{counts.red}</span>
         <div className="w-3 h-3 rounded-full bg-red-500" />
+        <span className="text-sm font-mono font-medium text-foreground">
+          {counts.red}
+        </span>
+        {playerColor === "red" && (
+          <span className="text-xs text-muted-foreground">(you)</span>
+        )}
       </div>
     </div>
   );
@@ -221,72 +234,130 @@ function GameSetup({
   const [difficulty, setDifficulty] = useState<AIDifficulty>("easy");
 
   return (
-    <div className="flex flex-col items-center gap-6 p-6 bg-card border border-border rounded-lg max-w-md">
-      <h2 className="text-xl font-bold text-foreground">Game Setup</h2>
-
-      <div className="flex flex-col gap-2 w-full">
-        <Label className="text-sm font-medium">Play as:</Label>
-        <div className="flex gap-2">
+    <div className="w-full max-w-md">
+      {/* Color Selection */}
+      <div className="mb-8">
+        <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-4">
+          Play As
+        </h3>
+        <div className="flex gap-3">
           <button
             onClick={() => setPlayerColor("blue")}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-colors ${
+            className={`flex-1 group py-4 px-4 border-b-2 transition-all ${
               playerColor === "blue"
-                ? "bg-blue-500/20 ring-2 ring-blue-500"
-                : "bg-muted hover:bg-muted/80"
+                ? "border-blue-500"
+                : "border-border hover:border-foreground/30"
             }`}
           >
-            <div className="w-4 h-4 rounded-full bg-blue-500" />
-            <span className="font-medium">Blue</span>
-            <span className="text-xs text-muted-foreground">(First)</span>
+            <div className="flex items-center justify-center gap-3">
+              <div
+                className={`w-5 h-5 rounded-full bg-blue-500 ${
+                  playerColor === "blue"
+                    ? "ring-2 ring-blue-500/30 ring-offset-2 ring-offset-background"
+                    : ""
+                }`}
+              />
+              <span
+                className={`font-semibold ${
+                  playerColor === "blue"
+                    ? "text-foreground"
+                    : "text-muted-foreground"
+                }`}
+              >
+                Blue
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Moves first</p>
           </button>
+
           <button
             onClick={() => setPlayerColor("red")}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-colors ${
+            className={`flex-1 group py-4 px-4 border-b-2 transition-all ${
               playerColor === "red"
-                ? "bg-red-500/20 ring-2 ring-red-500"
-                : "bg-muted hover:bg-muted/80"
+                ? "border-red-500"
+                : "border-border hover:border-foreground/30"
             }`}
           >
-            <div className="w-4 h-4 rounded-full bg-red-500" />
-            <span className="font-medium">Red</span>
-            <span className="text-xs text-muted-foreground">(Second)</span>
+            <div className="flex items-center justify-center gap-3">
+              <div
+                className={`w-5 h-5 rounded-full bg-red-500 ${
+                  playerColor === "red"
+                    ? "ring-2 ring-red-500/30 ring-offset-2 ring-offset-background"
+                    : ""
+                }`}
+              />
+              <span
+                className={`font-semibold ${
+                  playerColor === "red"
+                    ? "text-foreground"
+                    : "text-muted-foreground"
+                }`}
+              >
+                Red
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Moves second</p>
           </button>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 w-full">
-        <Label className="text-sm font-medium">AI Difficulty:</Label>
-        <div className="flex gap-2">
+      {/* Difficulty Selection */}
+      <div className="mb-10">
+        <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-4">
+          Difficulty
+        </h3>
+        <div className="flex gap-3">
           <button
             onClick={() => setDifficulty("easy")}
-            className={`flex-1 px-4 py-3 rounded-lg transition-colors ${
+            className={`flex-1 py-4 px-4 border-b-2 transition-all ${
               difficulty === "easy"
-                ? "bg-green-500/20 ring-2 ring-green-500 text-green-500"
-                : "bg-muted hover:bg-muted/80"
+                ? "border-foreground"
+                : "border-border hover:border-foreground/30"
             }`}
           >
-            <div className="font-medium">Easy</div>
-            <div className="text-xs text-muted-foreground">Random moves</div>
+            <span
+              className={`font-semibold ${
+                difficulty === "easy"
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              Easy
+            </span>
+            <p className="text-xs text-muted-foreground mt-1">Random moves</p>
           </button>
+
           <button
             onClick={() => setDifficulty("hard")}
-            className={`flex-1 px-4 py-3 rounded-lg transition-colors ${
+            className={`flex-1 py-4 px-4 border-b-2 transition-all ${
               difficulty === "hard"
-                ? "bg-red-500/20 ring-2 ring-red-500 text-red-500"
-                : "bg-muted hover:bg-muted/80"
+                ? "border-foreground"
+                : "border-border hover:border-foreground/30"
             }`}
           >
-            <div className="font-medium">Hard</div>
-            <div className="text-xs text-muted-foreground">Strategic AI</div>
+            <span
+              className={`font-semibold ${
+                difficulty === "hard"
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              Hard
+            </span>
+            <p className="text-xs text-muted-foreground mt-1">Strategic AI</p>
           </button>
         </div>
       </div>
 
+      {/* Start Button */}
       <button
         onClick={() => onStart(playerColor, difficulty)}
-        className="w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+        className="w-full group flex items-center justify-center gap-3 py-4 bg-foreground text-background font-semibold hover:bg-foreground/90 transition-colors"
       >
-        Start Game
+        <span>Start Game</span>
+        <span className="group-hover:translate-x-1 transition-transform">
+          →
+        </span>
       </button>
     </div>
   );
@@ -385,135 +456,201 @@ function SoloGameComponent() {
     setMoveHistory([]);
   }
 
+  // Setup Screen
   if (!gameStarted) {
     return (
-      <div className="min-h-screen bg-background p-4 flex flex-col items-center justify-center gap-6">
-        <Link to="/games/crossway">
-          <Button variant="ghost" size="sm">
-            ← Back to Crossway
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-bold text-foreground">
-          Crossway - VS Computer
-        </h1>
-        <GameSetup onStart={handleStart} />
+      <div className="min-h-screen bg-background">
+        {/* Header */}
+        <header className="border-b border-border">
+          <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+            <Link
+              to="/"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              ← Back
+            </Link>
+            <h1 className="text-sm font-medium text-foreground">VS Computer</h1>
+            <div className="w-12" />
+          </div>
+        </header>
+
+        {/* Setup Content */}
+        <main className="max-w-4xl mx-auto px-6 py-16">
+          <div className="text-center mb-12">
+            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground font-medium mb-3">
+              Solo Play
+            </p>
+            <h2 className="text-4xl font-bold text-foreground">
+              Challenge the AI
+            </h2>
+          </div>
+
+          <div className="flex justify-center">
+            <GameSetup onStart={handleStart} />
+          </div>
+        </main>
       </div>
     );
   }
 
+  // Game Screen
   return (
-    <div className="min-h-screen bg-background p-4 flex flex-col items-center gap-4">
-      <h1 className="text-2xl font-bold text-foreground">
-        Crossway - VS Computer
-      </h1>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b border-border">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+          <button
+            onClick={handleNewGame}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Exit
+          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground">
+              VS Computer
+            </span>
+            <span className="text-xs text-muted-foreground">•</span>
+            <span
+              className={`text-xs font-medium ${
+                difficulty === "easy"
+                  ? "text-muted-foreground"
+                  : "text-foreground"
+              }`}
+            >
+              {difficulty === "easy" ? "Easy" : "Hard"}
+            </span>
+          </div>
+          <div className="w-12" />
+        </div>
+      </header>
 
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-muted-foreground">Difficulty:</span>
-        <span
-          className={`font-medium ${
-            difficulty === "easy" ? "text-green-500" : "text-red-500"
-          }`}
-        >
-          {difficulty === "easy" ? "Easy" : "Hard"}
-        </span>
-      </div>
+      <main className="max-w-4xl mx-auto px-6 py-8">
+        {/* Status Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 pb-6 border-b border-border">
+          {/* Player Indicators */}
+          <div className="flex items-center gap-4">
+            <div
+              className={`flex items-center gap-2 px-3 py-2 transition-all ${
+                state.currentPlayer === "blue" && state.status === "playing"
+                  ? "border-b-2 border-blue-500"
+                  : ""
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-blue-500" />
+              <span className="text-sm font-medium text-foreground">
+                {playerColor === "blue" ? "You" : "AI"}
+              </span>
+              {state.currentPlayer === "blue" && state.status === "playing" && (
+                <span className="text-xs text-muted-foreground animate-pulse">
+                  ●
+                </span>
+              )}
+            </div>
 
-      <div className="flex items-center gap-4">
-        <div
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-            state.currentPlayer === "blue" && state.status === "playing"
-              ? "bg-blue-500/20 ring-2 ring-blue-500"
-              : "bg-muted"
-          }`}
-        >
-          <div className="w-4 h-4 rounded-full bg-blue-500" />
-          <span className="text-foreground font-medium">
-            {playerColor === "blue" ? "You" : "AI"}
-          </span>
+            <span className="text-muted-foreground text-sm">vs</span>
+
+            <div
+              className={`flex items-center gap-2 px-3 py-2 transition-all ${
+                state.currentPlayer === "red" && state.status === "playing"
+                  ? "border-b-2 border-red-500"
+                  : ""
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-red-500" />
+              <span className="text-sm font-medium text-foreground">
+                {playerColor === "red" ? "You" : "AI"}
+              </span>
+              {state.currentPlayer === "red" && state.status === "playing" && (
+                <span className="text-xs text-muted-foreground animate-pulse">
+                  ●
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Move Counter */}
+          <MoveCounter moves={state.moveHistory} playerColor={playerColor} />
         </div>
 
-        <span className="text-muted-foreground">vs</span>
-
-        <div
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-            state.currentPlayer === "red" && state.status === "playing"
-              ? "bg-red-500/20 ring-2 ring-red-500"
-              : "bg-muted"
-          }`}
-        >
-          <div className="w-4 h-4 rounded-full bg-red-500" />
-          <span className="text-foreground font-medium">
-            {playerColor === "red" ? "You" : "AI"}
-          </span>
-        </div>
-      </div>
-
-      <MoveCounter moves={state.moveHistory} />
-
-      {isAIThinking && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-500 rounded-lg">
-          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-          <span className="text-sm font-medium">AI is thinking...</span>
-        </div>
-      )}
-
-      {isGameOver && (
-        <div
-          className={`px-6 py-3 rounded-lg text-lg font-bold ${
-            (state.status === "blue_wins" && playerColor === "blue") ||
-            (state.status === "red_wins" && playerColor === "red")
-              ? "bg-green-500/20 text-green-500"
-              : "bg-red-500/20 text-red-500"
-          }`}
-        >
-          {(state.status === "blue_wins" && playerColor === "blue") ||
-          (state.status === "red_wins" && playerColor === "red")
-            ? "You Win!"
-            : "AI Wins!"}
-        </div>
-      )}
-
-      <div className="flex flex-col lg:flex-row items-start gap-4 w-full max-w-4xl justify-center">
-        <GameBoard
-          state={state}
-          onPositionClick={handlePositionClick}
-          disabled={!isPlayerTurn || isAIThinking || isGameOver}
-        />
-        <MoveHistory moves={state.moveHistory} />
-      </div>
-
-      <div className="text-sm text-muted-foreground text-center max-w-md">
-        {state.status === "playing" ? (
-          isAIThinking ? (
-            <span>Waiting for AI...</span>
-          ) : isPlayerTurn ? (
-            state.selectedPiece ? (
-              <span>Click a highlighted position to move</span>
-            ) : (
-              <span>Your turn - click one of your pieces</span>
-            )
-          ) : (
-            <span>AI's turn</span>
-          )
-        ) : (
-          <span>Game over!</span>
+        {/* AI Thinking / Game Status */}
+        {isAIThinking && (
+          <div className="flex items-center justify-center gap-2 py-3 mb-6 text-muted-foreground">
+            <div className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse" />
+            <span className="text-sm">AI is thinking...</span>
+          </div>
         )}
-      </div>
 
-      <div className="flex gap-2">
-        <Button
-          variant="secondary"
-          onClick={handleUndo}
-          disabled={moveHistory.length < 2 || isAIThinking}
-        >
-          Undo
-        </Button>
-        <Button variant="secondary" onClick={handleReset} disabled={isAIThinking}>
-          Reset
-        </Button>
-        <Button onClick={handleNewGame}>New Game</Button>
-      </div>
+        {isGameOver && (
+          <div className="text-center py-6 mb-6 border-y border-border">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">
+              Game Over
+            </p>
+            <p className="text-2xl font-bold text-foreground">
+              {(state.status === "blue_wins" && playerColor === "blue") ||
+              (state.status === "red_wins" && playerColor === "red")
+                ? "You Win! 🎉"
+                : "AI Wins"}
+            </p>
+          </div>
+        )}
+
+        {/* Game Area */}
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Board */}
+          <div className="flex-1">
+            <GameBoard
+              state={state}
+              onPositionClick={handlePositionClick}
+              disabled={!isPlayerTurn || isAIThinking || isGameOver}
+            />
+
+            {/* Hint Text */}
+            <p className="text-center text-sm text-muted-foreground mt-4">
+              {state.status === "playing"
+                ? isAIThinking
+                  ? "Waiting for AI..."
+                  : isPlayerTurn
+                  ? state.selectedPiece
+                    ? "Click a highlighted position to move"
+                    : "Your turn — select a piece"
+                  : "AI's turn"
+                : ""}
+            </p>
+          </div>
+
+          {/* Sidebar */}
+          <div className="lg:w-56 space-y-8">
+            <MoveHistory moves={state.moveHistory} />
+
+            {/* Controls */}
+            <div className="space-y-2">
+              <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-3">
+                Actions
+              </h3>
+              <button
+                onClick={handleUndo}
+                disabled={moveHistory.length < 2 || isAIThinking}
+                className="w-full py-2.5 text-sm text-left px-3 border-b border-border hover:border-foreground/30 disabled:opacity-40 disabled:hover:border-border transition-colors text-foreground"
+              >
+                Undo Move
+              </button>
+              <button
+                onClick={handleReset}
+                disabled={isAIThinking}
+                className="w-full py-2.5 text-sm text-left px-3 border-b border-border hover:border-foreground/30 disabled:opacity-40 disabled:hover:border-border transition-colors text-foreground"
+              >
+                Reset Board
+              </button>
+              <button
+                onClick={handleNewGame}
+                className="w-full py-2.5 text-sm text-left px-3 border-b border-border hover:border-foreground/30 transition-colors text-foreground font-medium"
+              >
+                New Game →
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
-
