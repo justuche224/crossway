@@ -613,7 +613,8 @@ function OnlineGameComponent() {
   const { password: initialPassword } = Route.useSearch();
   const [selectedPiece, setSelectedPiece] = useState<Position | null>(null);
   const [blockedPosition, setBlockedPosition] = useState<Position | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [passwordInput, setPasswordInput] = useState<string | undefined>(
     initialPassword
   );
@@ -754,11 +755,18 @@ function OnlineGameComponent() {
     setBlockedPosition(null);
   }
 
+  function copyRoomCode() {
+    navigator.clipboard.writeText(roomId);
+    setCopiedCode(true);
+    toast.success("Room code copied!");
+    setTimeout(() => setCopiedCode(false), 2000);
+  }
+
   function copyRoomLink() {
     navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
+    setCopiedLink(true);
     toast.success("Room link copied!");
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopiedLink(false), 2000);
   }
 
   const isGameOver = localGameState.status !== "playing";
@@ -779,21 +787,32 @@ function OnlineGameComponent() {
           >
             ← Lobby
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Room</span>
             <span className="font-mono font-bold text-foreground tracking-wider">
               {roomId}
             </span>
             <button
-              onClick={copyRoomLink}
+              onClick={copyRoomCode}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border rounded hover:border-foreground/30 flex items-center gap-1"
             >
-              {copied ? (
+              {copiedCode ? (
                 <Check className="w-3 h-3" />
               ) : (
                 <Copy className="w-3 h-3" />
               )}
-              {copied ? "Copied" : "Copy"}
+              {copiedCode ? "Copied" : "Code"}
+            </button>
+            <button
+              onClick={copyRoomLink}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border rounded hover:border-foreground/30 flex items-center gap-1"
+            >
+              {copiedLink ? (
+                <Check className="w-3 h-3" />
+              ) : (
+                <Copy className="w-3 h-3" />
+              )}
+              {copiedLink ? "Copied" : "Link"}
             </button>
           </div>
           <div className="w-20" />
