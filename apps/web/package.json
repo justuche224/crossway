@@ -34,8 +34,10 @@
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "zod": "catalog:",
+    "socket.io-client": "^4.8.1",
     "@crossway/api": "workspace:*",
-    "@crossway/auth": "workspace:*"
+    "@crossway/auth": "workspace:*",
+    "@crossway/socket": "workspace:*"
   },
   "devDependencies": {
     "@tanstack/react-router-devtools": "^1.141.1",

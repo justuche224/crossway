@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/online/")({
   component: OnlineLobbyComponent,
@@ -14,11 +16,34 @@ function generateRoomCode(): string {
   return code;
 }
 
+interface RoomStatus {
+  currentRooms: number;
+  maxRooms: number;
+  canCreate: boolean;
+}
+
 function OnlineLobbyComponent() {
   const navigate = useNavigate();
   const [roomCode, setRoomCode] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [roomStatus, setRoomStatus] = useState<RoomStatus | null>(null);
 
-  function handleCreateRoom() {
+  useEffect(() => {
+    const serverUrl =
+      import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
+    fetch(`${serverUrl}/rooms/status`, { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setRoomStatus(data))
+      .catch(() => {});
+  }, []);
+
+  async function handleCreateRoom() {
+    if (roomStatus && !roomStatus.canCreate) {
+      toast.error("Server is at capacity. Please try again later.");
+      return;
+    }
+
+    setIsCreating(true);
     const code = generateRoomCode();
     navigate({ to: `/online/${code}` });
   }
@@ -31,7 +56,6 @@ function OnlineLobbyComponent() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link
@@ -45,7 +69,6 @@ function OnlineLobbyComponent() {
         </div>
       </header>
 
-      {/* Content */}
       <main className="max-w-4xl mx-auto px-6 py-16">
         <div className="text-center mb-16">
           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground font-medium mb-3">
@@ -60,8 +83,15 @@ function OnlineLobbyComponent() {
           </p>
         </div>
 
+        {roomStatus && (
+          <div className="max-w-sm mx-auto mb-8 text-center">
+            <p className="text-xs text-muted-foreground">
+              Active rooms: {roomStatus.currentRooms} / {roomStatus.maxRooms}
+            </p>
+          </div>
+        )}
+
         <div className="max-w-sm mx-auto space-y-12">
-          {/* Create Room */}
           <div>
             <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-4">
               Create Room
@@ -71,16 +101,32 @@ function OnlineLobbyComponent() {
             </p>
             <button
               onClick={handleCreateRoom}
-              className="w-full group flex items-center justify-center gap-3 py-4 bg-foreground text-background font-semibold hover:bg-foreground/90 transition-colors"
+              disabled={
+                isCreating || Boolean(roomStatus && !roomStatus.canCreate)
+              }
+              className="w-full group flex items-center justify-center gap-3 py-4 bg-foreground text-background font-semibold hover:bg-foreground/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>Create New Room</span>
-              <span className="group-hover:translate-x-1 transition-transform">
-                →
-              </span>
+              {isCreating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <>
+                  <span>Create New Room</span>
+                  <span className="group-hover:translate-x-1 transition-transform">
+                    →
+                  </span>
+                </>
+              )}
             </button>
+            {roomStatus && !roomStatus.canCreate && (
+              <p className="text-xs text-red-500 mt-2 text-center">
+                Server at capacity. Please try again later.
+              </p>
+            )}
           </div>
 
-          {/* Divider */}
           <div className="flex items-center gap-4">
             <div className="flex-1 h-px bg-border" />
             <span className="text-xs text-muted-foreground uppercase tracking-wide">
@@ -89,7 +135,6 @@ function OnlineLobbyComponent() {
             <div className="flex-1 h-px bg-border" />
           </div>
 
-          {/* Join Room */}
           <div>
             <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-4">
               Join Room

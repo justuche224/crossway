@@ -1,32 +1,65 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
+import { Loader2, Copy, Check } from "lucide-react";
+import { useSocket } from "@/hooks/use-socket";
+import type {
+  GameState,
+  Position,
+  RepetitionRule,
+  Move,
+  Player,
+  GameSettings,
+} from "@crossway/socket";
 import {
-  type GameState,
-  type Position,
-  type RepetitionRule,
-  type Move,
-  POSITION_COORDS,
-  createInitialState,
+  BOARD_GRAPH,
   getValidMoves,
   getPieceOwner,
-  makeMoveWithWarning,
-  makeMove,
   checkRepetition,
-  forfeitGame,
-  getRandomMove,
-  getMoveCountsPerPlayer,
-  getPlayerDangerLevel,
-  type Player,
-} from "@/lib/game-logic";
+  getAllValidMovesForPlayer,
+} from "@crossway/socket";
 
 export const Route = createFileRoute("/online/$roomId")({
   component: OnlineGameComponent,
 });
 
+const POSITION_COORDS: Record<Position, { x: number; y: number }> = {
+  L1: { x: 80, y: 60 },
+  L2: { x: 80, y: 150 },
+  L3: { x: 80, y: 240 },
+  R1: { x: 420, y: 60 },
+  R2: { x: 420, y: 150 },
+  R3: { x: 420, y: 240 },
+  CT: { x: 250, y: 60 },
+  CL: { x: 160, y: 150 },
+  CC: { x: 250, y: 150 },
+  CR: { x: 340, y: 150 },
+  CB: { x: 250, y: 240 },
+};
+
 const CIRCLE_CENTER = { x: 250, y: 150 };
 const CIRCLE_RADIUS = 90;
 const TIME_OPTIONS = [5, 10, 15, 30] as const;
+
+function getPlayerDangerLevel(
+  state: GameState,
+  player: Player
+): "safe" | "warning" | "danger" {
+  const availableMoves = getAllValidMovesForPlayer(state, player);
+  if (availableMoves.length === 0) return "danger";
+  if (availableMoves.length <= 2) return "warning";
+  return "safe";
+}
+
+function getMoveCountsPerPlayer(moveHistory: Move[]): {
+  blue: number;
+  red: number;
+} {
+  return {
+    blue: moveHistory.filter((m) => m.player === "blue").length,
+    red: moveHistory.filter((m) => m.player === "red").length,
+  };
+}
 
 function GameBoard({
   state,
@@ -280,63 +313,80 @@ function DangerIndicator({ state }: { state: GameState }) {
 }
 
 function GameSettings({
-  enabledRules,
-  onToggleRule,
-  blitzEnabled,
-  onToggleBlitz,
-  blitzTimeLimit,
-  onTimeChange,
+  settings,
+  onSettingsChange,
   disabled,
+  isHost,
+  gameStarted,
 }: {
-  enabledRules: RepetitionRule[];
-  onToggleRule: (rule: RepetitionRule) => void;
-  blitzEnabled: boolean;
-  onToggleBlitz: () => void;
-  blitzTimeLimit: number;
-  onTimeChange: (time: number) => void;
+  settings: GameSettings;
+  onSettingsChange: (settings: GameSettings) => void;
   disabled: boolean;
+  isHost: boolean;
+  gameStarted: boolean;
 }) {
+  const canModify = isHost && !gameStarted;
+
+  function toggleRule(rule: RepetitionRule) {
+    if (!canModify) return;
+    const newRules = settings.enabledRules.includes(rule)
+      ? settings.enabledRules.filter((r) => r !== rule)
+      : [...settings.enabledRules, rule];
+    onSettingsChange({ ...settings, enabledRules: newRules });
+  }
+
+  function toggleBlitz() {
+    if (!canModify) return;
+    onSettingsChange({ ...settings, blitzEnabled: !settings.blitzEnabled });
+  }
+
+  function changeTime(time: number) {
+    if (!canModify) return;
+    onSettingsChange({ ...settings, blitzTimeLimit: time });
+  }
+
   return (
     <div className="w-full border-t border-border pt-6">
       <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-4">
-        Game Settings
+        Game Settings {!isHost && "(Host only)"}
       </h3>
 
-      {/* Blitz Mode */}
       <div className="mb-6">
         <button
-          onClick={onToggleBlitz}
-          disabled={disabled}
+          onClick={toggleBlitz}
+          disabled={!canModify}
           className={`flex items-center gap-3 py-2 transition-colors ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
+            !canModify ? "opacity-50 cursor-not-allowed" : ""
           }`}
         >
           <div
             className={`w-4 h-4 border-2 rounded-sm flex items-center justify-center transition-colors ${
-              blitzEnabled
+              settings.blitzEnabled
                 ? "bg-foreground border-foreground"
                 : "border-muted-foreground"
             }`}
           >
-            {blitzEnabled && <span className="text-background text-xs">✓</span>}
+            {settings.blitzEnabled && (
+              <Check className="w-3 h-3 text-background" />
+            )}
           </div>
           <span className="text-sm font-medium text-foreground">
             Blitz Mode
           </span>
         </button>
 
-        {blitzEnabled && (
+        {settings.blitzEnabled && (
           <div className="mt-3 ml-7 flex items-center gap-2">
             {TIME_OPTIONS.map((time) => (
               <button
                 key={time}
-                onClick={() => onTimeChange(time)}
-                disabled={disabled}
+                onClick={() => changeTime(time)}
+                disabled={!canModify}
                 className={`px-3 py-1.5 text-xs font-medium transition-all ${
-                  blitzTimeLimit === time
+                  settings.blitzTimeLimit === time
                     ? "border-b-2 border-foreground text-foreground"
                     : "text-muted-foreground hover:text-foreground"
-                } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${!canModify ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {time}s
               </button>
@@ -345,25 +395,27 @@ function GameSettings({
         )}
       </div>
 
-      {/* Repetition Rules */}
       <div>
         <p className="text-xs text-muted-foreground mb-3">Repetition Rules</p>
         <div className="space-y-2">
           {(["warning", "block", "forfeit"] as RepetitionRule[]).map((rule) => (
             <button
               key={rule}
-              onClick={() => onToggleRule(rule)}
-              className="flex items-center gap-3 py-1.5 w-full text-left"
+              onClick={() => toggleRule(rule)}
+              disabled={!canModify}
+              className={`flex items-center gap-3 py-1.5 w-full text-left ${
+                !canModify ? "opacity-50 cursor-not-allowed" : ""
+              }`}
             >
               <div
                 className={`w-4 h-4 border-2 rounded-sm flex items-center justify-center transition-colors ${
-                  enabledRules.includes(rule)
+                  settings.enabledRules.includes(rule)
                     ? "bg-foreground border-foreground"
                     : "border-muted-foreground"
                 }`}
               >
-                {enabledRules.includes(rule) && (
-                  <span className="text-background text-xs">✓</span>
+                {settings.enabledRules.includes(rule) && (
+                  <Check className="w-3 h-3 text-background" />
                 )}
               </div>
               <span className="text-sm text-foreground capitalize">{rule}</span>
@@ -419,183 +471,184 @@ function BlitzTimer({
   );
 }
 
-function OnlineGameComponent() {
-  const { roomId } = Route.useParams();
-  const [state, setState] = useState<GameState>(createInitialState);
-  const [enabledRules, setEnabledRules] = useState<RepetitionRule[]>([
-    "warning",
-  ]);
-  const [blockedPosition, setBlockedPosition] = useState<Position | null>(null);
-  const [blitzEnabled, setBlitzEnabled] = useState(false);
-  const [blitzTimeLimit, setBlitzTimeLimit] = useState(10);
-  const [timeLeft, setTimeLeft] = useState(10);
-  const [playerColor] = useState<Player>("blue"); // Would be set by server
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastPlayerRef = useRef(state.currentPlayer);
-
-  const isPlayerTurn = state.currentPlayer === playerColor;
-
-  const executeRandomMove = useCallback(() => {
-    const randomMove = getRandomMove(state);
-    if (randomMove) {
-      toast.info(
-        `Time's up! Auto-moved ${
-          state.currentPlayer === "blue" ? "Blue" : "Red"
-        }'s piece.`
-      );
-      setState(makeMove(randomMove.from, randomMove.to, state));
-    }
-  }, [state]);
-
-  useEffect(() => {
-    if (lastPlayerRef.current !== state.currentPlayer) {
-      lastPlayerRef.current = state.currentPlayer;
-      if (blitzEnabled && state.status === "playing") {
-        setTimeLeft(blitzTimeLimit);
-      }
-    }
-  }, [state.currentPlayer, state.status, blitzEnabled, blitzTimeLimit]);
-
-  useEffect(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
-    if (!blitzEnabled || state.status !== "playing") {
-      return;
-    }
-
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-          }
-          setTimeout(executeRandomMove, 0);
-          return blitzTimeLimit;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [blitzEnabled, state.status, blitzTimeLimit, executeRandomMove]);
-
-  function toggleRule(rule: RepetitionRule) {
-    setEnabledRules((prev) =>
-      prev.includes(rule) ? prev.filter((r) => r !== rule) : [...prev, rule]
+function ConnectionStatus({
+  isConnected,
+  isInRoom,
+  opponent,
+}: {
+  isConnected: boolean;
+  isInRoom: boolean;
+  opponent: { id: string; color: Player; connected: boolean } | null;
+}) {
+  if (!isConnected) {
+    return (
+      <div className="border-b border-border bg-red-500/10">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin text-red-500" />
+          <span className="text-xs text-red-500">Connecting to server...</span>
+        </div>
+      </div>
     );
   }
 
+  if (!isInRoom) {
+    return (
+      <div className="border-b border-border bg-amber-500/10">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+          <span className="text-xs text-amber-500">Joining room...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!opponent) {
+    return (
+      <div className="border-b border-border bg-amber-500/10">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          <span className="text-xs text-amber-500">
+            Waiting for opponent to join...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b border-border bg-green-500/10">
+      <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
+        <div className="w-2 h-2 rounded-full bg-green-500" />
+        <span className="text-xs text-green-500">Connected - Game ready</span>
+      </div>
+    </div>
+  );
+}
+
+function OnlineGameComponent() {
+  const { roomId } = Route.useParams();
+  const [selectedPiece, setSelectedPiece] = useState<Position | null>(null);
+  const [blockedPosition, setBlockedPosition] = useState<Position | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleError = useCallback(
+    (error: { code: string; message: string }) => {
+      if (error.code === "MOVE_BLOCKED") {
+        toast.warning(error.message);
+      } else if (error.code === "NOT_YOUR_TURN") {
+        toast.error("It's not your turn");
+      } else if (error.code === "ROOM_FULL") {
+        toast.error("This room is full");
+      } else {
+        toast.error(error.message);
+      }
+    },
+    []
+  );
+
+  const {
+    isConnected,
+    isInRoom,
+    gameState,
+    settings,
+    timeLeft,
+    yourColor,
+    isHost,
+    opponent,
+    makeMove,
+    updateSettings,
+    resetGame,
+  } = useSocket({ roomId, onError: handleError });
+
+  const localGameState: GameState = gameState
+    ? { ...gameState, selectedPiece }
+    : {
+        currentPlayer: "blue",
+        bluePieces: ["L1", "L2", "L3"],
+        redPieces: ["R1", "R2", "R3"],
+        selectedPiece: null,
+        status: "playing",
+        moveHistory: [],
+        boardStateHistory: [],
+        repetitionWarnings: { blue: 0, red: 0 },
+      };
+
+  const isPlayerTurn = localGameState.currentPlayer === yourColor;
+  const canPlay = isConnected && isInRoom && opponent && isPlayerTurn;
+  const gameStarted = localGameState.moveHistory.length > 0;
+
   function handlePositionClick(pos: Position) {
-    if (state.status !== "playing") return;
+    if (!canPlay || localGameState.status !== "playing") return;
 
-    const owner = getPieceOwner(pos, state);
+    const owner = getPieceOwner(pos, localGameState);
 
-    if (state.selectedPiece) {
-      const validMoves = getValidMoves(state.selectedPiece, state);
+    if (selectedPiece) {
+      const validMoves = getValidMoves(selectedPiece, localGameState);
 
       if (validMoves.includes(pos)) {
-        const repetitionCheck = checkRepetition(
-          state.selectedPiece,
-          pos,
-          state,
-          enabledRules
-        );
-
-        if (repetitionCheck.shouldForfeit) {
-          toast.error(
-            `${
-              state.currentPlayer === "blue" ? "Blue" : "Red"
-            } forfeits due to excessive repetition!`
+        if (settings) {
+          const repetitionCheck = checkRepetition(
+            selectedPiece,
+            pos,
+            localGameState,
+            settings.enabledRules
           );
-          setState(forfeitGame(state, state.currentPlayer));
-          return;
+
+          if (repetitionCheck.shouldBlock) {
+            setBlockedPosition(pos);
+            toast.warning("Move blocked! This would cause repetition.");
+            setTimeout(() => setBlockedPosition(null), 1000);
+            setSelectedPiece(null);
+            return;
+          }
         }
 
-        if (repetitionCheck.shouldBlock) {
-          setBlockedPosition(pos);
-          toast.warning("Move blocked! This would cause repetition.");
-          setTimeout(() => setBlockedPosition(null), 1000);
-          return;
-        }
-
-        if (repetitionCheck.shouldWarn) {
-          const warningCount =
-            state.repetitionWarnings[state.currentPlayer] + 1;
-          const maxWarnings = enabledRules.includes("forfeit") ? 3 : Infinity;
-          toast.warning(
-            `Warning: Repetitive move detected! (${warningCount}/${
-              maxWarnings === Infinity ? "∞" : maxWarnings
-            })`
-          );
-          setState(makeMoveWithWarning(state.selectedPiece, pos, state, true));
-          return;
-        }
-
-        setState(makeMoveWithWarning(state.selectedPiece, pos, state, false));
+        makeMove(selectedPiece, pos);
+        setSelectedPiece(null);
         return;
       }
 
-      if (owner === state.currentPlayer) {
-        setState({ ...state, selectedPiece: pos });
+      if (owner === yourColor) {
+        setSelectedPiece(pos);
         return;
       }
 
-      setState({ ...state, selectedPiece: null });
+      setSelectedPiece(null);
       return;
     }
 
-    if (owner === state.currentPlayer) {
-      setState({ ...state, selectedPiece: pos });
+    if (owner === yourColor) {
+      setSelectedPiece(pos);
     }
   }
 
   function handleReset() {
-    setState(createInitialState());
+    if (!isHost) {
+      toast.error("Only the host can reset the game");
+      return;
+    }
+    resetGame();
+    setSelectedPiece(null);
     setBlockedPosition(null);
-    setTimeLeft(blitzTimeLimit);
-    lastPlayerRef.current = "blue";
-  }
-
-  function handleBlitzToggle() {
-    if (state.status === "playing" && state.moveHistory.length > 0) {
-      toast.error("Cannot change blitz mode during an active game");
-      return;
-    }
-    setBlitzEnabled((prev) => !prev);
-    setTimeLeft(blitzTimeLimit);
-  }
-
-  function handleTimeChange(time: number) {
-    if (state.status === "playing" && state.moveHistory.length > 0) {
-      toast.error("Cannot change time limit during an active game");
-      return;
-    }
-    setBlitzTimeLimit(time);
-    setTimeLeft(time);
   }
 
   function copyRoomLink() {
     navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
     toast.success("Room link copied!");
+    setTimeout(() => setCopied(false), 2000);
   }
 
-  const isGameOver = state.status !== "playing";
+  const isGameOver = localGameState.status !== "playing";
   const isForfeit =
-    state.status === "blue_forfeit" || state.status === "red_forfeit";
-  const isPlaying = state.status === "playing" && state.moveHistory.length > 0;
+    localGameState.status === "blue_forfeit" ||
+    localGameState.status === "red_forfeit";
+  const isPlaying =
+    localGameState.status === "playing" &&
+    localGameState.moveHistory.length > 0;
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link
@@ -611,149 +664,165 @@ function OnlineGameComponent() {
             </span>
             <button
               onClick={copyRoomLink}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border rounded hover:border-foreground/30"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border rounded hover:border-foreground/30 flex items-center gap-1"
             >
-              Copy Link
+              {copied ? (
+                <Check className="w-3 h-3" />
+              ) : (
+                <Copy className="w-3 h-3" />
+              )}
+              {copied ? "Copied" : "Copy"}
             </button>
           </div>
           <div className="w-20" />
         </div>
       </header>
 
-      {/* Connection Status */}
-      <div className="border-b border-border bg-secondary/30">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-          <span className="text-xs text-muted-foreground">
-            WebSocket integration pending — playing locally for now
-          </span>
-        </div>
-      </div>
+      <ConnectionStatus
+        isConnected={isConnected}
+        isInRoom={isInRoom}
+        opponent={opponent}
+      />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        {/* Status Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 pb-6 border-b border-border">
-          {/* Player Indicators */}
           <div className="flex items-center gap-4">
             <div
               className={`flex items-center gap-2 px-3 py-2 transition-all ${
-                state.currentPlayer === "blue" && state.status === "playing"
+                localGameState.currentPlayer === "blue" &&
+                localGameState.status === "playing"
                   ? "border-b-2 border-blue-500"
                   : ""
               }`}
             >
               <div className="w-3 h-3 rounded-full bg-blue-500" />
               <span className="text-sm font-medium text-foreground">Blue</span>
-              {playerColor === "blue" && (
+              {yourColor === "blue" && (
                 <span className="text-xs text-muted-foreground">(you)</span>
               )}
-              {state.currentPlayer === "blue" && state.status === "playing" && (
-                <span className="text-xs text-muted-foreground animate-pulse">
-                  ●
-                </span>
-              )}
+              {localGameState.currentPlayer === "blue" &&
+                localGameState.status === "playing" && (
+                  <span className="text-xs text-muted-foreground animate-pulse">
+                    ●
+                  </span>
+                )}
             </div>
 
             <span className="text-muted-foreground text-sm">vs</span>
 
             <div
               className={`flex items-center gap-2 px-3 py-2 transition-all ${
-                state.currentPlayer === "red" && state.status === "playing"
+                localGameState.currentPlayer === "red" &&
+                localGameState.status === "playing"
                   ? "border-b-2 border-red-500"
                   : ""
               }`}
             >
               <div className="w-3 h-3 rounded-full bg-red-500" />
               <span className="text-sm font-medium text-foreground">Red</span>
-              {playerColor === "red" && (
+              {yourColor === "red" && (
                 <span className="text-xs text-muted-foreground">(you)</span>
               )}
-              {state.currentPlayer === "red" && state.status === "playing" && (
-                <span className="text-xs text-muted-foreground animate-pulse">
-                  ●
-                </span>
-              )}
+              {localGameState.currentPlayer === "red" &&
+                localGameState.status === "playing" && (
+                  <span className="text-xs text-muted-foreground animate-pulse">
+                    ●
+                  </span>
+                )}
             </div>
           </div>
 
-          {/* Move Counter */}
-          <MoveCounter moves={state.moveHistory} />
+          <div className="flex items-center gap-4">
+            {isHost && (
+              <span className="text-xs px-2 py-1 bg-foreground/10 rounded text-foreground">
+                Host
+              </span>
+            )}
+            <MoveCounter moves={localGameState.moveHistory} />
+          </div>
         </div>
 
-        {/* Blitz Timer */}
-        {blitzEnabled && isPlaying && (
+        {settings?.blitzEnabled && isPlaying && timeLeft !== null && (
           <div className="mb-6 flex justify-center">
-            <BlitzTimer timeLeft={timeLeft} timeLimit={blitzTimeLimit} />
+            <BlitzTimer
+              timeLeft={timeLeft}
+              timeLimit={settings.blitzTimeLimit}
+            />
           </div>
         )}
 
-        {/* Danger Indicator */}
-        <DangerIndicator state={state} />
+        <DangerIndicator state={localGameState} />
 
-        {/* Game Over Banner */}
         {isGameOver && (
           <div className="text-center py-6 mb-6 border-y border-border">
             <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">
               Game Over{isForfeit ? " — Forfeit" : ""}
             </p>
             <p className="text-2xl font-bold text-foreground">
-              {state.status === "blue_wins" || state.status === "red_forfeit"
-                ? "Blue Wins! 🔵"
-                : "Red Wins! 🔴"}
+              {localGameState.status === "blue_wins" ||
+              localGameState.status === "red_forfeit"
+                ? "Blue Wins!"
+                : "Red Wins!"}
             </p>
           </div>
         )}
 
-        {/* Game Area */}
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Board Section */}
           <div className="flex-1">
             <GameBoard
-              state={state}
+              state={localGameState}
               onPositionClick={handlePositionClick}
               blockedPosition={blockedPosition}
-              disabled={!isPlayerTurn && state.status === "playing"}
+              disabled={!canPlay}
             />
 
-            {/* Hint Text */}
             <p className="text-center text-sm text-muted-foreground mt-4">
-              {state.status === "playing"
-                ? isPlayerTurn
-                  ? state.selectedPiece
-                    ? "Click a highlighted position to move"
-                    : "Your turn — select a piece"
-                  : "Waiting for opponent..."
-                : ""}
+              {!isConnected
+                ? "Connecting..."
+                : !isInRoom
+                ? "Joining room..."
+                : !opponent
+                ? "Waiting for opponent..."
+                : localGameState.status !== "playing"
+                ? ""
+                : isPlayerTurn
+                ? selectedPiece
+                  ? "Click a highlighted position to move"
+                  : "Your turn — select a piece"
+                : "Waiting for opponent..."}
             </p>
           </div>
 
-          {/* Sidebar */}
           <div className="lg:w-64 space-y-6">
-            <MoveHistory moves={state.moveHistory} />
+            <MoveHistory moves={localGameState.moveHistory} />
 
-            {/* Actions */}
             <div>
               <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-medium mb-3">
                 Actions
               </h3>
               <button
                 onClick={handleReset}
-                className="w-full py-2.5 text-sm text-left px-3 border-b border-border hover:border-foreground/30 transition-colors text-foreground font-medium"
+                disabled={!isHost}
+                className="w-full py-2.5 text-sm text-left px-3 border-b border-border hover:border-foreground/30 transition-colors text-foreground font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isGameOver ? "Play Again →" : "Reset Game →"}
+                {!isHost && (
+                  <span className="text-xs text-muted-foreground ml-2">
+                    (Host only)
+                  </span>
+                )}
               </button>
             </div>
 
-            {/* Settings */}
-            <GameSettings
-              enabledRules={enabledRules}
-              onToggleRule={toggleRule}
-              blitzEnabled={blitzEnabled}
-              onToggleBlitz={handleBlitzToggle}
-              blitzTimeLimit={blitzTimeLimit}
-              onTimeChange={handleTimeChange}
-              disabled={isPlaying}
-            />
+            {settings && (
+              <GameSettings
+                settings={settings}
+                onSettingsChange={updateSettings}
+                disabled={!isHost || gameStarted}
+                isHost={isHost}
+                gameStarted={gameStarted}
+              />
+            )}
           </div>
         </div>
       </main>

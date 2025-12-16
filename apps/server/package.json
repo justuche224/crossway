@@ -17,12 +17,15 @@
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "zod": "catalog:",
+    "socket.io": "^4.8.1",
     "@crossway/api": "workspace:*",
     "@crossway/auth": "workspace:*",
-    "@crossway/db": "workspace:*"
+    "@crossway/db": "workspace:*",
+    "@crossway/socket": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
+    "@types/node": "^22.13.13",
     "typescript": "catalog:",
     "tsdown": "^0.16.5",
     "@crossway/config": "workspace:*"
