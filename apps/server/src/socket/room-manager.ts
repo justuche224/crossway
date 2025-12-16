@@ -5,7 +5,11 @@ import type {
   GameSettings,
   Player,
 } from "@crossway/socket";
-import { createInitialGameState, createDefaultSettings } from "@crossway/socket";
+import {
+  createInitialGameState,
+  createDefaultSettings,
+  RECONNECT_GRACE_PERIOD_MS,
+} from "@crossway/socket";
 
 export interface RoomStore {
   get(roomId: string): Room | undefined;
@@ -39,6 +43,19 @@ class InMemoryRoomStore implements RoomStore {
   }
 }
 
+export type JoinResult =
+  | { success: true; room: Room; color: Player; isReconnect: boolean }
+  | { success: false; error: string; code: string };
+
+export type DisconnectResult = {
+  roomId: string;
+  color: Player;
+  roomDeleted: boolean;
+  isGracePeriod: boolean;
+} | null;
+
+const disconnectTimers = new Map<string, NodeJS.Timeout>();
+
 export class RoomManager {
   private store: RoomStore;
   private maxRooms: number;
@@ -69,23 +86,73 @@ export class RoomManager {
     return this.playerRooms.get(playerId);
   }
 
+  roomRequiresPassword(roomId: string): boolean {
+    const room = this.store.get(roomId);
+    return room?.password !== null && room?.password !== undefined;
+  }
+
   createOrJoinRoom(
     roomId: string,
-    playerId: string
-  ): { success: true; room: Room; color: Player } | { success: false; error: string; code: string } {
+    playerId: string,
+    password?: string
+  ): JoinResult {
     let room = this.store.get(roomId);
 
     if (room) {
-      const existingPlayer = room.players.find((p) => p.id === playerId);
-      if (existingPlayer) {
-        existingPlayer.connected = true;
-        this.store.set(roomId, room);
-        this.playerRooms.set(playerId, roomId);
-        return { success: true, room, color: existingPlayer.color };
+      if (room.password !== null && room.password !== password) {
+        return { success: false, error: "Incorrect password", code: "WRONG_PASSWORD" };
       }
 
-      if (room.players.length >= 2) {
+      const existingPlayer = room.players.find((p) => p.id === playerId);
+      if (existingPlayer) {
+        const timerKey = `${roomId}:${playerId}`;
+        const existingTimer = disconnectTimers.get(timerKey);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          disconnectTimers.delete(timerKey);
+        }
+
+        existingPlayer.connected = true;
+        existingPlayer.disconnectedAt = undefined;
+        this.store.set(roomId, room);
+        this.playerRooms.set(playerId, roomId);
+        return { success: true, room, color: existingPlayer.color, isReconnect: true };
+      }
+
+      const activePlayers = room.players.filter((p) => {
+        if (p.connected) return true;
+        if (p.disconnectedAt) {
+          const elapsed = Date.now() - p.disconnectedAt;
+          return elapsed < RECONNECT_GRACE_PERIOD_MS;
+        }
+        return false;
+      });
+
+      if (activePlayers.length >= 2) {
         return { success: false, error: "Room is full", code: "ROOM_FULL" };
+      }
+
+      const expiredPlayer = room.players.find((p) => {
+        if (p.connected) return false;
+        if (!p.disconnectedAt) return true;
+        return Date.now() - p.disconnectedAt >= RECONNECT_GRACE_PERIOD_MS;
+      });
+
+      if (expiredPlayer) {
+        const timerKey = `${roomId}:${expiredPlayer.id}`;
+        const existingTimer = disconnectTimers.get(timerKey);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          disconnectTimers.delete(timerKey);
+        }
+        this.playerRooms.delete(expiredPlayer.id);
+
+        expiredPlayer.id = playerId;
+        expiredPlayer.connected = true;
+        expiredPlayer.disconnectedAt = undefined;
+        this.store.set(roomId, room);
+        this.playerRooms.set(playerId, roomId);
+        return { success: true, room, color: expiredPlayer.color, isReconnect: false };
       }
 
       const firstPlayer = room.players[0];
@@ -94,7 +161,7 @@ export class RoomManager {
       room.players.push(newPlayer);
       this.store.set(roomId, room);
       this.playerRooms.set(playerId, roomId);
-      return { success: true, room, color };
+      return { success: true, room, color, isReconnect: false };
     }
 
     if (!this.canCreateRoom()) {
@@ -110,6 +177,7 @@ export class RoomManager {
     const newRoom: Room = {
       id: roomId,
       hostId: playerId,
+      password: password || null,
       players: [newPlayer],
       gameState: createInitialGameState(),
       settings: createDefaultSettings(),
@@ -118,10 +186,13 @@ export class RoomManager {
 
     this.store.set(roomId, newRoom);
     this.playerRooms.set(playerId, roomId);
-    return { success: true, room: newRoom, color };
+    return { success: true, room: newRoom, color, isReconnect: false };
   }
 
-  leaveRoom(playerId: string): { roomId: string; color: Player; roomDeleted: boolean } | null {
+  markPlayerDisconnected(
+    playerId: string,
+    onGraceExpired?: () => void
+  ): DisconnectResult {
     const roomId = this.playerRooms.get(playerId);
     if (!roomId) return null;
 
@@ -138,21 +209,105 @@ export class RoomManager {
     }
 
     player.connected = false;
-    this.playerRooms.delete(playerId);
+    player.disconnectedAt = Date.now();
+    this.store.set(roomId, room);
 
-    const connectedPlayers = room.players.filter((p) => p.connected);
-    if (connectedPlayers.length === 0) {
-      this.store.delete(roomId);
-      return { roomId, color: player.color, roomDeleted: true };
+    const timerKey = `${roomId}:${playerId}`;
+    const existingTimer = disconnectTimers.get(timerKey);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
     }
 
-    const newHost = connectedPlayers[0];
-    if (room.hostId === playerId && newHost) {
-      room.hostId = newHost.id;
+    const timer = setTimeout(() => {
+      disconnectTimers.delete(timerKey);
+      this.finalizeDisconnect(playerId);
+      onGraceExpired?.();
+    }, RECONNECT_GRACE_PERIOD_MS);
+
+    disconnectTimers.set(timerKey, timer);
+
+    return { roomId, color: player.color, roomDeleted: false, isGracePeriod: true };
+  }
+
+  private finalizeDisconnect(playerId: string): void {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return;
+
+    const room = this.store.get(roomId);
+    if (!room) {
+      this.playerRooms.delete(playerId);
+      return;
+    }
+
+    const playerIndex = room.players.findIndex((p) => p.id === playerId);
+    if (playerIndex === -1) {
+      this.playerRooms.delete(playerId);
+      return;
+    }
+
+    room.players.splice(playerIndex, 1);
+    this.playerRooms.delete(playerId);
+
+    if (room.players.length === 0) {
+      this.store.delete(roomId);
+      return;
+    }
+
+    const connectedPlayers = room.players.filter((p) => p.connected);
+    const firstConnected = connectedPlayers[0];
+    if (room.hostId === playerId && firstConnected) {
+      room.hostId = firstConnected.id;
     }
 
     this.store.set(roomId, room);
-    return { roomId, color: player.color, roomDeleted: false };
+  }
+
+  leaveRoom(playerId: string): DisconnectResult {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return null;
+
+    const timerKey = `${roomId}:${playerId}`;
+    const existingTimer = disconnectTimers.get(timerKey);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      disconnectTimers.delete(timerKey);
+    }
+
+    const room = this.store.get(roomId);
+    if (!room) {
+      this.playerRooms.delete(playerId);
+      return null;
+    }
+
+    const playerIndex = room.players.findIndex((p) => p.id === playerId);
+    if (playerIndex === -1) {
+      this.playerRooms.delete(playerId);
+      return null;
+    }
+
+    const player = room.players[playerIndex];
+    if (!player) {
+      this.playerRooms.delete(playerId);
+      return null;
+    }
+
+    const color = player.color;
+    room.players.splice(playerIndex, 1);
+    this.playerRooms.delete(playerId);
+
+    if (room.players.length === 0) {
+      this.store.delete(roomId);
+      return { roomId, color, roomDeleted: true, isGracePeriod: false };
+    }
+
+    const connectedPlayers = room.players.filter((p) => p.connected);
+    const firstConnected = connectedPlayers[0];
+    if (room.hostId === playerId && firstConnected) {
+      room.hostId = firstConnected.id;
+    }
+
+    this.store.set(roomId, room);
+    return { roomId, color, roomDeleted: false, isGracePeriod: false };
   }
 
   updateGameState(roomId: string, gameState: GameState): boolean {
@@ -196,9 +351,22 @@ export class RoomManager {
     let cleaned = 0;
 
     for (const room of this.store.values()) {
-      const connectedPlayers = room.players.filter((p) => p.connected);
-      if (connectedPlayers.length === 0 && now - room.createdAt > maxAgeMs) {
+      const activePlayers = room.players.filter((p) => {
+        if (p.connected) return true;
+        if (p.disconnectedAt) {
+          return now - p.disconnectedAt < RECONNECT_GRACE_PERIOD_MS;
+        }
+        return false;
+      });
+
+      if (activePlayers.length === 0 && now - room.createdAt > maxAgeMs) {
         for (const player of room.players) {
+          const timerKey = `${room.id}:${player.id}`;
+          const timer = disconnectTimers.get(timerKey);
+          if (timer) {
+            clearTimeout(timer);
+            disconnectTimers.delete(timerKey);
+          }
           this.playerRooms.delete(player.id);
         }
         this.store.delete(room.id);
@@ -211,4 +379,3 @@ export class RoomManager {
 }
 
 export const roomManager = new RoomManager();
-

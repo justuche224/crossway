@@ -49,11 +49,13 @@ export interface RoomPlayer {
   id: string;
   color: Player;
   connected: boolean;
+  disconnectedAt?: number;
 }
 
 export interface Room {
   id: string;
   hostId: string;
+  password: string | null;
   players: RoomPlayer[];
   gameState: GameState;
   settings: GameSettings;
@@ -63,6 +65,7 @@ export interface Room {
 export interface RoomState {
   roomId: string;
   hostId: string;
+  hasPassword: boolean;
   players: RoomPlayer[];
   gameState: GameState;
   settings: GameSettings;
@@ -71,7 +74,7 @@ export interface RoomState {
 }
 
 export interface ClientToServerEvents {
-  "room:join": (data: { roomId: string }) => void;
+  "room:join": (data: { roomId: string; playerId: string; password?: string }) => void;
   "room:leave": () => void;
   "game:move": (data: { from: Position; to: Position }) => void;
   "game:settings": (data: GameSettings) => void;
@@ -80,8 +83,11 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   "room:joined": (data: RoomState) => void;
+  "room:password_required": () => void;
   "room:player_joined": (data: { player: RoomPlayer }) => void;
   "room:player_left": (data: { playerId: string; color: Player }) => void;
+  "room:player_disconnected": (data: { playerId: string; color: Player }) => void;
+  "room:player_reconnected": (data: { playerId: string; color: Player }) => void;
   "room:error": (data: { code: string; message: string }) => void;
   "game:state": (data: { gameState: GameState; timeLeft?: number }) => void;
   "game:settings": (data: GameSettings) => void;
@@ -91,10 +97,12 @@ export interface ServerToClientEvents {
 export interface InterServerEvents {}
 
 export interface SocketData {
-  odId: string;
+visiblePlayerId: string;
   roomId: string | null;
   color: Player | null;
 }
+
+export const RECONNECT_GRACE_PERIOD_MS = 30000;
 
 export const BLUE_HOME: Position[] = ["L1", "L2", "L3"];
 export const RED_HOME: Position[] = ["R1", "R2", "R3"];

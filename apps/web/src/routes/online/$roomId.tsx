@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Loader2, Copy, Check } from "lucide-react";
+import { Loader2, Copy, Check, Lock, AlertTriangle } from "lucide-react";
 import { useSocket } from "@/hooks/use-socket";
 import type {
   GameState,
@@ -12,15 +12,24 @@ import type {
   GameSettings,
 } from "@crossway/socket";
 import {
-  BOARD_GRAPH,
   getValidMoves,
   getPieceOwner,
   checkRepetition,
   getAllValidMovesForPlayer,
 } from "@crossway/socket";
 
+type SearchParams = {
+  password?: string;
+};
+
 export const Route = createFileRoute("/online/$roomId")({
   component: OnlineGameComponent,
+  validateSearch: (search: Record<string, unknown>): SearchParams => {
+    return {
+      password:
+        typeof search.password === "string" ? search.password : undefined,
+    };
+  },
 });
 
 const POSITION_COORDS: Record<Position, { x: number; y: number }> = {
@@ -474,11 +483,15 @@ function BlitzTimer({
 function ConnectionStatus({
   isConnected,
   isInRoom,
+  needsPassword,
   opponent,
+  opponentDisconnected,
 }: {
   isConnected: boolean;
   isInRoom: boolean;
+  needsPassword: boolean;
   opponent: { id: string; color: Player; connected: boolean } | null;
+  opponentDisconnected: boolean;
 }) {
   if (!isConnected) {
     return (
@@ -491,12 +504,38 @@ function ConnectionStatus({
     );
   }
 
+  if (needsPassword) {
+    return (
+      <div className="border-b border-border bg-amber-500/10">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
+          <Lock className="w-3 h-3 text-amber-500" />
+          <span className="text-xs text-amber-500">
+            This room requires a password
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (!isInRoom) {
     return (
       <div className="border-b border-border bg-amber-500/10">
         <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
           <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
           <span className="text-xs text-amber-500">Joining room...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (opponentDisconnected) {
+    return (
+      <div className="border-b border-border bg-amber-500/10">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-2">
+          <AlertTriangle className="w-3 h-3 text-amber-500" />
+          <span className="text-xs text-amber-500">
+            Opponent disconnected - waiting for reconnection...
+          </span>
         </div>
       </div>
     );
@@ -525,11 +564,70 @@ function ConnectionStatus({
   );
 }
 
+function PasswordPrompt({
+  onSubmit,
+}: {
+  onSubmit: (password: string) => void;
+}) {
+  const [password, setPassword] = useState("");
+
+  return (
+    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-card border border-border rounded-lg p-6 max-w-sm w-full mx-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Lock className="w-5 h-5 text-foreground" />
+          <h3 className="text-lg font-semibold text-foreground">
+            Password Required
+          </h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          This room is password protected. Enter the password to join.
+        </p>
+        <input
+          type="text"
+          placeholder="Enter password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && password) {
+              onSubmit(password);
+            }
+          }}
+          className="w-full py-3 px-4 bg-transparent border border-border focus:border-foreground outline-none text-sm text-foreground placeholder:text-muted-foreground/50 transition-colors rounded mb-4"
+          autoFocus
+        />
+        <button
+          onClick={() => onSubmit(password)}
+          disabled={!password}
+          className="w-full py-3 bg-foreground text-background font-semibold hover:bg-foreground/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded"
+        >
+          Join Room
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function OnlineGameComponent() {
   const { roomId } = Route.useParams();
+  const { password: initialPassword } = Route.useSearch();
   const [selectedPiece, setSelectedPiece] = useState<Position | null>(null);
   const [blockedPosition, setBlockedPosition] = useState<Position | null>(null);
   const [copied, setCopied] = useState(false);
+  const [passwordInput, setPasswordInput] = useState<string | undefined>(
+    initialPassword
+  );
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      return "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   const handleError = useCallback(
     (error: { code: string; message: string }) => {
@@ -539,6 +637,9 @@ function OnlineGameComponent() {
         toast.error("It's not your turn");
       } else if (error.code === "ROOM_FULL") {
         toast.error("This room is full");
+      } else if (error.code === "WRONG_PASSWORD") {
+        toast.error("Incorrect password");
+        setShowPasswordPrompt(true);
       } else {
         toast.error(error.message);
       }
@@ -546,19 +647,40 @@ function OnlineGameComponent() {
     []
   );
 
+  const handlePasswordRequired = useCallback(() => {
+    setShowPasswordPrompt(true);
+  }, []);
+
   const {
     isConnected,
     isInRoom,
+    needsPassword,
     gameState,
     settings,
     timeLeft,
     yourColor,
     isHost,
     opponent,
+    opponentDisconnected,
+    joinWithPassword,
     makeMove,
     updateSettings,
     resetGame,
-  } = useSocket({ roomId, onError: handleError });
+  } = useSocket({
+    roomId,
+    password: passwordInput,
+    onError: handleError,
+    onPasswordRequired: handlePasswordRequired,
+  });
+
+  const handlePasswordSubmit = useCallback(
+    (pwd: string) => {
+      setPasswordInput(pwd);
+      setShowPasswordPrompt(false);
+      joinWithPassword(pwd);
+    },
+    [joinWithPassword]
+  );
 
   const localGameState: GameState = gameState
     ? { ...gameState, selectedPiece }
@@ -678,10 +800,16 @@ function OnlineGameComponent() {
         </div>
       </header>
 
+      {(showPasswordPrompt || needsPassword) && (
+        <PasswordPrompt onSubmit={handlePasswordSubmit} />
+      )}
+
       <ConnectionStatus
         isConnected={isConnected}
         isInRoom={isInRoom}
+        needsPassword={needsPassword}
         opponent={opponent}
+        opponentDisconnected={opponentDisconnected}
       />
 
       <main className="max-w-5xl mx-auto px-6 py-8">

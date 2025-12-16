@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Lock, LockOpen } from "lucide-react";
 
 export const Route = createFileRoute("/online/")({
   component: OnlineLobbyComponent,
@@ -25,6 +25,8 @@ interface RoomStatus {
 function OnlineLobbyComponent() {
   const navigate = useNavigate();
   const [roomCode, setRoomCode] = useState("");
+  const [roomPassword, setRoomPassword] = useState("");
+  const [showPasswordField, setShowPasswordField] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [roomStatus, setRoomStatus] = useState<RoomStatus | null>(null);
 
@@ -45,7 +47,15 @@ function OnlineLobbyComponent() {
 
     setIsCreating(true);
     const code = generateRoomCode();
-    navigate({ to: `/online/${code}` });
+
+    if (roomPassword) {
+      navigate({
+        to: `/online/${code}`,
+        search: { password: roomPassword },
+      });
+    } else {
+      navigate({ to: `/online/${code}` });
+    }
   }
 
   function handleJoinRoom() {
@@ -99,6 +109,36 @@ function OnlineLobbyComponent() {
             <p className="text-sm text-muted-foreground mb-6">
               Start a new game and share the code with your friend.
             </p>
+
+            <button
+              type="button"
+              onClick={() => setShowPasswordField(!showPasswordField)}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
+            >
+              {showPasswordField ? (
+                <Lock className="w-4 h-4" />
+              ) : (
+                <LockOpen className="w-4 h-4" />
+              )}
+              <span>
+                {showPasswordField
+                  ? "Password protected"
+                  : "Add password (optional)"}
+              </span>
+            </button>
+
+            {showPasswordField && (
+              <div className="mb-4">
+                <input
+                  type="text"
+                  placeholder="Room password"
+                  value={roomPassword}
+                  onChange={(e) => setRoomPassword(e.target.value)}
+                  className="w-full py-3 px-4 bg-transparent border border-border focus:border-foreground outline-none text-sm text-foreground placeholder:text-muted-foreground/50 transition-colors rounded"
+                />
+              </div>
+            )}
+
             <button
               onClick={handleCreateRoom}
               disabled={
@@ -113,6 +153,7 @@ function OnlineLobbyComponent() {
                 </>
               ) : (
                 <>
+                  {roomPassword && <Lock className="w-4 h-4" />}
                   <span>Create New Room</span>
                   <span className="group-hover:translate-x-1 transition-transform">
                     →

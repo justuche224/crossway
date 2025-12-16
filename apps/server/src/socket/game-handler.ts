@@ -33,6 +33,8 @@ type GameServer = Server<
 >;
 
 const roomTimers = new Map<string, NodeJS.Timeout>();
+const socketToPlayer = new Map<string, string>();
+const playerToSocket = new Map<string, string>();
 
 function clearRoomTimer(roomId: string) {
   const timer = roomTimers.get(roomId);
@@ -87,20 +89,39 @@ function startBlitzTimer(io: GameServer, roomId: string) {
 export function handleSocketConnection(io: GameServer, socket: GameSocket) {
   console.log(`Socket connected: ${socket.id}`);
 
-  socket.on("room:join", ({ roomId }) => {
-    const existingRoom = roomManager.getPlayerRoom(socket.id);
+  socket.on("room:join", ({ roomId, playerId, password }) => {
+    const existingSocketId = playerToSocket.get(playerId);
+    if (existingSocketId && existingSocketId !== socket.id) {
+      const existingSocket = io.sockets.sockets.get(existingSocketId);
+      if (existingSocket) {
+        existingSocket.leave(roomId);
+        socketToPlayer.delete(existingSocketId);
+      }
+    }
+
+    socketToPlayer.set(socket.id, playerId);
+    playerToSocket.set(playerId, socket.id);
+    socket.data.visiblePlayerId = playerId;
+
+    const existingRoom = roomManager.getPlayerRoom(playerId);
     if (existingRoom && existingRoom !== roomId) {
       socket.leave(existingRoom);
-      const leaveResult = roomManager.leaveRoom(socket.id);
+      const leaveResult = roomManager.leaveRoom(playerId);
       if (leaveResult && !leaveResult.roomDeleted) {
         socket.to(existingRoom).emit("room:player_left", {
-          playerId: socket.id,
+          playerId,
           color: leaveResult.color,
         });
       }
     }
 
-    const result = roomManager.createOrJoinRoom(roomId, socket.id);
+    const room = roomManager.getRoom(roomId);
+    if (room && room.password && !password) {
+      socket.emit("room:password_required");
+      return;
+    }
+
+    const result = roomManager.createOrJoinRoom(roomId, playerId, password);
 
     if (!result.success) {
       socket.emit("room:error", { code: result.code, message: result.error });
@@ -111,39 +132,49 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
     socket.data.roomId = roomId;
     socket.data.color = result.color;
 
-    const room = result.room;
-    const isHost = room.hostId === socket.id;
+    const joinedRoom = result.room;
+    const isHost = joinedRoom.hostId === playerId;
 
     const roomState: RoomState = {
-      roomId: room.id,
-      hostId: room.hostId,
-      players: room.players,
-      gameState: room.gameState,
-      settings: room.settings,
+      roomId: joinedRoom.id,
+      hostId: joinedRoom.hostId,
+      hasPassword: joinedRoom.password !== null,
+      players: joinedRoom.players,
+      gameState: joinedRoom.gameState,
+      settings: joinedRoom.settings,
       yourColor: result.color,
       isHost,
     };
 
     socket.emit("room:joined", roomState);
 
-    socket.to(roomId).emit("room:player_joined", {
-      player: { id: socket.id, color: result.color, connected: true },
-    });
+    if (result.isReconnect) {
+      socket.to(roomId).emit("room:player_reconnected", {
+        playerId,
+        color: result.color,
+      });
+    } else {
+      socket.to(roomId).emit("room:player_joined", {
+        player: { id: playerId, color: result.color, connected: true },
+      });
+    }
 
-    if (room.settings.blitzEnabled && room.gameState.status === "playing" && room.players.length === 2) {
+    const connectedPlayers = joinedRoom.players.filter((p) => p.connected);
+    if (joinedRoom.settings.blitzEnabled && joinedRoom.gameState.status === "playing" && connectedPlayers.length === 2) {
       startBlitzTimer(io, roomId);
     }
   });
 
   socket.on("room:leave", () => {
-    handleDisconnect(io, socket);
+    handleLeave(io, socket, false);
   });
 
   socket.on("game:move", ({ from, to }) => {
     const roomId = socket.data.roomId;
     const playerColor = socket.data.color;
+    const playerId = socket.data.visiblePlayerId;
 
-    if (!roomId || !playerColor) {
+    if (!roomId || !playerColor || !playerId) {
       socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
       return;
     }
@@ -207,12 +238,14 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
 
   socket.on("game:settings", (settings) => {
     const roomId = socket.data.roomId;
-    if (!roomId) {
+    const playerId = socket.data.visiblePlayerId;
+
+    if (!roomId || !playerId) {
       socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
       return;
     }
 
-    const updated = roomManager.updateSettings(roomId, socket.id, settings);
+    const updated = roomManager.updateSettings(roomId, playerId, settings);
     if (!updated) {
       socket.emit("room:error", { code: "NOT_HOST", message: "Only the host can change settings" });
       return;
@@ -230,12 +263,14 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
 
   socket.on("game:reset", () => {
     const roomId = socket.data.roomId;
-    if (!roomId) {
+    const playerId = socket.data.visiblePlayerId;
+
+    if (!roomId || !playerId) {
       socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
       return;
     }
 
-    const newState = roomManager.resetGame(roomId, socket.id);
+    const newState = roomManager.resetGame(roomId, playerId);
     if (!newState) {
       socket.emit("room:error", { code: "NOT_HOST", message: "Only the host can reset the game" });
       return;
@@ -255,23 +290,52 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
   });
 
   socket.on("disconnect", () => {
-    handleDisconnect(io, socket);
+    handleLeave(io, socket, true);
   });
 }
 
-function handleDisconnect(_io: GameServer, socket: GameSocket) {
-  console.log(`Socket disconnected: ${socket.id}`);
+function handleLeave(io: GameServer, socket: GameSocket, isDisconnect: boolean) {
+  const playerId = socket.data.visiblePlayerId;
+  const roomId = socket.data.roomId;
 
-  const result = roomManager.leaveRoom(socket.id);
-  if (result && !result.roomDeleted) {
-    socket.to(result.roomId).emit("room:player_left", {
-      playerId: socket.id,
-      color: result.color,
-    });
+  console.log(`Socket ${isDisconnect ? "disconnected" : "left"}: ${socket.id} (player: ${playerId})`);
+
+  if (!playerId) {
+    socketToPlayer.delete(socket.id);
+    return;
   }
 
-  if (result?.roomDeleted) {
-    clearRoomTimer(result.roomId);
+  socketToPlayer.delete(socket.id);
+
+  if (isDisconnect) {
+    const result = roomManager.markPlayerDisconnected(playerId, () => {
+      if (roomId) {
+        io.to(roomId).emit("room:player_left", {
+          playerId,
+          color: result?.color ?? "blue",
+        });
+      }
+    });
+
+    if (result && result.isGracePeriod && roomId) {
+      socket.to(roomId).emit("room:player_disconnected", {
+        playerId,
+        color: result.color,
+      });
+    }
+  } else {
+    playerToSocket.delete(playerId);
+    const result = roomManager.leaveRoom(playerId);
+
+    if (result && !result.roomDeleted && roomId) {
+      socket.to(roomId).emit("room:player_left", {
+        playerId,
+        color: result.color,
+      });
+    }
+
+    if (result?.roomDeleted && roomId) {
+      clearRoomTimer(roomId);
+    }
   }
 }
-

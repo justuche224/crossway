@@ -10,17 +10,21 @@ import type {
   Player,
   RoomPlayer,
 } from "@crossway/socket";
+import { getPlayerId } from "@/utils/player-id";
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 interface UseSocketOptions {
   roomId: string;
+  password?: string;
   onError?: (error: { code: string; message: string }) => void;
+  onPasswordRequired?: () => void;
 }
 
 interface UseSocketReturn {
   isConnected: boolean;
   isInRoom: boolean;
+  needsPassword: boolean;
   roomState: RoomState | null;
   gameState: GameState | null;
   settings: GameSettings | null;
@@ -28,20 +32,40 @@ interface UseSocketReturn {
   yourColor: Player | null;
   isHost: boolean;
   opponent: RoomPlayer | null;
+  opponentDisconnected: boolean;
+  joinWithPassword: (password: string) => void;
   makeMove: (from: Position, to: Position) => void;
   updateSettings: (settings: GameSettings) => void;
   resetGame: () => void;
   leaveRoom: () => void;
 }
 
-export function useSocket({ roomId, onError }: UseSocketOptions): UseSocketReturn {
+export function useSocket({
+  roomId,
+  password,
+  onError,
+  onPasswordRequired,
+}: UseSocketOptions): UseSocketReturn {
   const socketRef = useRef<GameSocket | null>(null);
+  const playerIdRef = useRef<string>(getPlayerId());
   const [isConnected, setIsConnected] = useState(false);
   const [isInRoom, setIsInRoom] = useState(false);
+  const [needsPassword, setNeedsPassword] = useState(false);
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [settings, setSettings] = useState<GameSettings | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [opponentDisconnected, setOpponentDisconnected] = useState(false);
+
+  const joinRoom = useCallback((pwd?: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("room:join", {
+        roomId,
+        playerId: playerIdRef.current,
+        password: pwd,
+      });
+    }
+  }, [roomId]);
 
   useEffect(() => {
     const serverUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
@@ -54,7 +78,12 @@ export function useSocket({ roomId, onError }: UseSocketOptions): UseSocketRetur
 
     socket.on("connect", () => {
       setIsConnected(true);
-      socket.emit("room:join", { roomId });
+      setNeedsPassword(false);
+      socket.emit("room:join", {
+        roomId,
+        playerId: playerIdRef.current,
+        password,
+      });
     });
 
     socket.on("disconnect", () => {
@@ -62,11 +91,18 @@ export function useSocket({ roomId, onError }: UseSocketOptions): UseSocketRetur
       setIsInRoom(false);
     });
 
+    socket.on("room:password_required", () => {
+      setNeedsPassword(true);
+      onPasswordRequired?.();
+    });
+
     socket.on("room:joined", (state) => {
       setIsInRoom(true);
+      setNeedsPassword(false);
       setRoomState(state);
       setGameState(state.gameState);
       setSettings(state.settings);
+      setOpponentDisconnected(false);
     });
 
     socket.on("room:player_joined", ({ player }) => {
@@ -79,9 +115,21 @@ export function useSocket({ roomId, onError }: UseSocketOptions): UseSocketRetur
             : [...prev.players, player];
         return { ...prev, players: newPlayers };
       });
+      setOpponentDisconnected(false);
     });
 
-    socket.on("room:player_left", ({ playerId, color }) => {
+    socket.on("room:player_left", ({ playerId }) => {
+      setRoomState((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          players: prev.players.filter((p) => p.id !== playerId),
+        };
+      });
+      setOpponentDisconnected(false);
+    });
+
+    socket.on("room:player_disconnected", ({ playerId }) => {
       setRoomState((prev) => {
         if (!prev) return prev;
         return {
@@ -91,6 +139,20 @@ export function useSocket({ roomId, onError }: UseSocketOptions): UseSocketRetur
           ),
         };
       });
+      setOpponentDisconnected(true);
+    });
+
+    socket.on("room:player_reconnected", ({ playerId }) => {
+      setRoomState((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          players: prev.players.map((p) =>
+            p.id === playerId ? { ...p, connected: true } : p
+          ),
+        };
+      });
+      setOpponentDisconnected(false);
     });
 
     socket.on("room:error", (error) => {
@@ -116,7 +178,15 @@ export function useSocket({ roomId, onError }: UseSocketOptions): UseSocketRetur
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [roomId, onError]);
+  }, [roomId, password, onError, onPasswordRequired]);
+
+  const joinWithPassword = useCallback(
+    (pwd: string) => {
+      setNeedsPassword(false);
+      joinRoom(pwd);
+    },
+    [joinRoom]
+  );
 
   const makeMove = useCallback((from: Position, to: Position) => {
     socketRef.current?.emit("game:move", { from, to });
@@ -137,11 +207,12 @@ export function useSocket({ roomId, onError }: UseSocketOptions): UseSocketRetur
   const yourColor = roomState?.yourColor ?? null;
   const isHost = roomState?.isHost ?? false;
   const opponent =
-    roomState?.players.find((p) => p.color !== yourColor && p.connected) ?? null;
+    roomState?.players.find((p) => p.color !== yourColor) ?? null;
 
   return {
     isConnected,
     isInRoom,
+    needsPassword,
     roomState,
     gameState,
     settings,
@@ -149,10 +220,11 @@ export function useSocket({ roomId, onError }: UseSocketOptions): UseSocketRetur
     yourColor,
     isHost,
     opponent,
+    opponentDisconnected,
+    joinWithPassword,
     makeMove,
     updateSettings,
     resetGame,
     leaveRoom,
   };
 }
-
