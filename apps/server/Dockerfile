@@ -11,7 +11,7 @@ COPY packages/config/package.json ./packages/config/
 COPY packages/db/package.json ./packages/db/
 COPY packages/socket/package.json ./packages/socket/
 
-RUN bun install --frozen-lockfile
+RUN bun install
 
 COPY packages ./packages
 COPY apps/server ./apps/server
