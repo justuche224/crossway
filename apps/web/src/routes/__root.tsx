@@ -1,4 +1,4 @@
-import Header from "@/components/header";
+// import Header from "@/components/header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { link, orpc } from "@/utils/orpc";
@@ -56,7 +56,7 @@ function RootComponent() {
 				storageKey="vite-ui-theme"
 			>
 				<div className="grid grid-rows-[auto_1fr] h-svh">
-					<Header />
+					{/* <Header /> */}
 					<Outlet />
 				</div>
 				<Toaster richColors />
