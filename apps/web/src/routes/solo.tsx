@@ -573,12 +573,14 @@ function SoloGameComponent() {
         </div>
 
         {/* AI Thinking / Game Status */}
-        {isAIThinking && (
-          <div className="flex items-center justify-center gap-2 py-3 mb-6 text-muted-foreground">
-            <div className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse" />
-            <span className="text-sm">AI is thinking...</span>
-          </div>
-        )}
+        <div className="h-12 mb-6 flex items-center justify-center">
+          {isAIThinking && (
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+              <div className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-pulse" />
+              <span className="text-sm">AI is thinking...</span>
+            </div>
+          )}
+        </div>
 
         {isGameOver && (
           <div className="text-center py-6 mb-6 border-y border-border">
@@ -588,7 +590,7 @@ function SoloGameComponent() {
             <p className="text-2xl font-bold text-foreground">
               {(state.status === "blue_wins" && playerColor === "blue") ||
               (state.status === "red_wins" && playerColor === "red")
-                ? "You Win! 🎉"
+                ? "You Win!"
                 : "AI Wins"}
             </p>
           </div>
