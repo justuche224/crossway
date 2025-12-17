@@ -26,11 +26,11 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 	head: () => ({
 		meta: [
 			{
-				title: "crossway",
+				title: "Crossway",
 			},
 			{
 				name: "description",
-				content: "crossway is a web application",
+				content: "Crossway - Two players. Three pieces each. One path to victory.",
 			},
 		],
 		links: [

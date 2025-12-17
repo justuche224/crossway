@@ -1,13 +1,170 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
+import { usePWAInstall } from "@/hooks/use-pwa-install";
+import { Download, Share, X } from "lucide-react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/")({
   component: CrosswayLandingComponent,
 });
 
+function InstallBanner() {
+  const { isInstallable, isInstalled, isIOSSafari, install } = usePWAInstall();
+  const [dismissed, setDismissed] = useState(false);
+  const [showIOSGuide, setShowIOSGuide] = useState(false);
+
+  if (isInstalled || dismissed) return null;
+
+  if (isIOSSafari) {
+    return (
+      <>
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-linear-to-r from-primary/95 to-primary/85 backdrop-blur-sm border-t border-primary-foreground/20 p-4 shadow-lg">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary-foreground/20 flex items-center justify-center">
+                <Download className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <div>
+                <p className="font-semibold text-primary-foreground text-sm">
+                  Install Crossway
+                </p>
+                <p className="text-primary-foreground/70 text-xs">
+                  Add to home screen for the best experience
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowIOSGuide(true)}
+                className="px-4 py-2 bg-primary-foreground text-primary font-semibold rounded-lg text-sm hover:bg-primary-foreground/90 transition-colors"
+              >
+                How to Install
+              </button>
+              <button
+                onClick={() => setDismissed(true)}
+                className="p-2 text-primary-foreground/70 hover:text-primary-foreground transition-colors"
+                aria-label="Dismiss"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {showIOSGuide && (
+          <div
+            className="fixed inset-0 z-60 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowIOSGuide(false)}
+          >
+            <div
+              className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-foreground">
+                  Install on iOS
+                </h3>
+                <button
+                  onClick={() => setShowIOSGuide(false)}
+                  className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-sm font-bold text-primary">
+                    1
+                  </div>
+                  <div>
+                    <p className="text-sm text-foreground">
+                      Tap the{" "}
+                      <span className="inline-flex items-center gap-1 font-medium">
+                        Share <Share className="w-4 h-4" />
+                      </span>{" "}
+                      button in Safari
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-sm font-bold text-primary">
+                    2
+                  </div>
+                  <div>
+                    <p className="text-sm text-foreground">
+                      Scroll down and tap{" "}
+                      <span className="font-medium">"Add to Home Screen"</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-sm font-bold text-primary">
+                    3
+                  </div>
+                  <div>
+                    <p className="text-sm text-foreground">
+                      Tap <span className="font-medium">"Add"</span> to install
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowIOSGuide(false)}
+                className="w-full mt-6 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (!isInstallable) return null;
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-linear-to-r from-primary/95 to-primary/85 backdrop-blur-sm border-t border-primary-foreground/20 p-4 shadow-lg">
+      <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary-foreground/20 flex items-center justify-center">
+            <Download className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <div>
+            <p className="font-semibold text-primary-foreground text-sm">
+              Install Crossway
+            </p>
+            <p className="text-primary-foreground/70 text-xs">
+              Quick access from your home screen
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={install}
+            className="px-4 py-2 bg-primary-foreground text-primary font-semibold rounded-lg text-sm hover:bg-primary-foreground/90 transition-colors"
+          >
+            Install
+          </button>
+          <button
+            onClick={() => setDismissed(true)}
+            className="p-2 text-primary-foreground/70 hover:text-primary-foreground transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CrosswayLandingComponent() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20">
       {/* Hero Section */}
       <header className="pt-16 pb-12 px-6 text-center border-b border-border">
         <div className="max-w-3xl mx-auto">
@@ -181,27 +338,23 @@ function CrosswayLandingComponent() {
         </div>
       </section>
 
-      {/* Leaderboard Teaser */}
-      <section className="py-16 px-6 border-t border-border">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-full border border-border bg-secondary/50">
-            <span className="text-xl">🏆</span>
-            <span className="text-sm text-muted-foreground">
-              <span className="text-foreground font-medium">Leaderboard</span> —
-              Coming Soon
-            </span>
-          </div>
-        </div>
-      </section>
-
       {/* Footer */}
       <footer className="py-8 px-6 border-t border-border">
         <div className="max-w-4xl mx-auto text-center">
           <p className="text-xs text-muted-foreground/60">
-            Crossway — A game of strategy and positioning
+            Crossway — Made with love by{" "}
+            <a
+              href="https://github.com/justuche224"
+              target="_blank"
+              className="text-foreground font-medium"
+            >
+              Uche
+            </a>
           </p>
         </div>
       </footer>
+
+      <InstallBanner />
     </div>
   );
 }
