@@ -68,7 +68,7 @@ export function useSocket({
   }, [roomId]);
 
   useEffect(() => {
-    const serverUrl = import.meta.env.VITE_SERVER_URL || "http://fwoow084cscs8kcc08soskc4.31.97.199.221.sslip.io";
+    const serverUrl = import.meta.env.VITE_SERVER_URL || "http://crossway-server.jvstgames.space";
     const socket: GameSocket = io(serverUrl, {
       transports: ["websocket", "polling"],
       withCredentials: true,
