@@ -103,6 +103,11 @@ export function checkWinCondition(state: GameState): GameStatus {
   
   if (blueInRedHome) return 'blue_wins'
   if (redInBlueHome) return 'red_wins'
+  
+  if (!canPlayerMove(state.currentPlayer, state)) {
+    return state.currentPlayer === 'blue' ? 'red_wins' : 'blue_wins'
+  }
+  
   return 'playing'
 }
 

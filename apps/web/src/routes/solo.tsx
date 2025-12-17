@@ -13,6 +13,7 @@ import {
   getMoveCountsPerPlayer,
   formatMoveNotation,
   getPlayerDangerLevel,
+  canPlayerMove,
   type Player,
 } from "@/lib/game-logic";
 import { type AIDifficulty, getAIMove } from "@/lib/game-ai";
@@ -593,6 +594,12 @@ function SoloGameComponent() {
                 ? "You Win!"
                 : "AI Wins"}
             </p>
+            {!canPlayerMove(state.currentPlayer, state) && (
+              <p className="text-sm text-muted-foreground mt-2">
+                {state.currentPlayer === playerColor ? "You were" : "AI was"}{" "}
+                trapped with no valid moves
+              </p>
+            )}
           </div>
         )}
 

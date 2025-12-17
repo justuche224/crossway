@@ -17,6 +17,7 @@ import {
   getRandomMove,
   getMoveCountsPerPlayer,
   getPlayerDangerLevel,
+  canPlayerMove,
 } from "@/lib/game-logic";
 
 export const Route = createFileRoute("/local")({
@@ -669,9 +670,15 @@ function LocalGameComponent() {
             </p>
             <p className="text-2xl font-bold text-foreground">
               {state.status === "blue_wins" || state.status === "red_forfeit"
-                ? "Blue Wins! 🔵"
-                : "Red Wins! 🔴"}
+                ? "Blue Wins!"
+                : "Red Wins!"}
             </p>
+            {!isForfeit && !canPlayerMove(state.currentPlayer, state) && (
+              <p className="text-sm text-muted-foreground mt-2">
+                {state.currentPlayer === "blue" ? "Blue" : "Red"} was trapped
+                with no valid moves
+              </p>
+            )}
           </div>
         )}
 

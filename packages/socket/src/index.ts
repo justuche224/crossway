@@ -174,12 +174,22 @@ export function getPieceOwner(
   return null;
 }
 
+export function canPlayerMove(player: Player, state: GameState): boolean {
+  const pieces = player === "blue" ? state.bluePieces : state.redPieces;
+  return pieces.some((pos) => getValidMoves(pos, state).length > 0);
+}
+
 export function checkWinCondition(state: GameState): GameStatus {
   const blueInRedHome = state.bluePieces.every((pos) => RED_HOME.includes(pos));
   const redInBlueHome = state.redPieces.every((pos) => BLUE_HOME.includes(pos));
 
   if (blueInRedHome) return "blue_wins";
   if (redInBlueHome) return "red_wins";
+
+  if (!canPlayerMove(state.currentPlayer, state)) {
+    return state.currentPlayer === "blue" ? "red_wins" : "blue_wins";
+  }
+
   return "playing";
 }
 

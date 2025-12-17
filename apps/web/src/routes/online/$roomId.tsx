@@ -16,6 +16,7 @@ import {
   getPieceOwner,
   checkRepetition,
   getAllValidMovesForPlayer,
+  canPlayerMove,
 } from "@crossway/socket";
 
 type SearchParams = {
@@ -911,6 +912,13 @@ function OnlineGameComponent() {
                 ? "Blue Wins!"
                 : "Red Wins!"}
             </p>
+            {!isForfeit &&
+              !canPlayerMove(localGameState.currentPlayer, localGameState) && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  {localGameState.currentPlayer === "blue" ? "Blue" : "Red"} was
+                  trapped with no valid moves
+                </p>
+              )}
           </div>
         )}
 
