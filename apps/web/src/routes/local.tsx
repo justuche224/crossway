@@ -480,6 +480,26 @@ function LocalGameComponent() {
     };
   }, [blitzEnabled, state.status, blitzTimeLimit, executeRandomMove]);
 
+  // Check for trapped player - if current player cannot move, they lose
+  useEffect(() => {
+    if (
+      state.status === "playing" &&
+      !canPlayerMove(state.currentPlayer, state)
+    ) {
+      const winner = state.currentPlayer === "blue" ? "red_wins" : "blue_wins";
+      setState((prev) => ({
+        ...prev,
+        status: winner,
+        selectedPiece: null,
+      }));
+      toast.info(
+        `${
+          state.currentPlayer === "blue" ? "Blue" : "Red"
+        } is trapped with no valid moves!`
+      );
+    }
+  }, [state.currentPlayer, state.bluePieces, state.redPieces, state.status]);
+
   function toggleRule(rule: RepetitionRule) {
     setEnabledRules((prev) =>
       prev.includes(rule) ? prev.filter((r) => r !== rule) : [...prev, rule]

@@ -15,6 +15,7 @@ import {
   getRandomMove,
   getPieceOwner,
   getValidMoves,
+  canPlayerMove,
 } from "@crossway/socket";
 import { roomManager } from "./room-manager";
 import { rateLimiter } from "./rate-limiter";
@@ -49,7 +50,11 @@ function startBlitzTimer(io: GameServer, roomId: string) {
   clearRoomTimer(roomId);
 
   const room = roomManager.getRoom(roomId);
-  if (!room || !room.settings.blitzEnabled || room.gameState.status !== "playing") {
+  if (
+    !room ||
+    !room.settings.blitzEnabled ||
+    room.gameState.status !== "playing"
+  ) {
     return;
   }
 
@@ -70,14 +75,35 @@ function startBlitzTimer(io: GameServer, roomId: string) {
 
       const randomMove = getRandomMove(currentRoom.gameState);
       if (randomMove) {
-        const newState = makeMove(randomMove.from, randomMove.to, currentRoom.gameState);
+        let newState = makeMove(
+          randomMove.from,
+          randomMove.to,
+          currentRoom.gameState
+        );
+
+        // Explicit trap check: if current player cannot move, they lose
+        if (
+          newState.status === "playing" &&
+          !canPlayerMove(newState.currentPlayer, newState)
+        ) {
+          newState = {
+            ...newState,
+            status:
+              newState.currentPlayer === "blue" ? "red_wins" : "blue_wins",
+            selectedPiece: null,
+          };
+        }
+
         roomManager.updateGameState(roomId, newState);
         io.to(roomId).emit("game:state", {
           gameState: newState,
           timeLeft: currentRoom.settings.blitzTimeLimit,
         });
 
-        if (newState.status === "playing" && currentRoom.settings.blitzEnabled) {
+        if (
+          newState.status === "playing" &&
+          currentRoom.settings.blitzEnabled
+        ) {
           startBlitzTimer(io, roomId);
         }
       }
@@ -130,7 +156,8 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
       if (!cooldownCheck.allowed) {
         socket.emit("room:error", {
           code: "RATE_LIMIT_ROOM_COOLDOWN",
-          message: cooldownCheck.error ?? "Please wait before creating another room",
+          message:
+            cooldownCheck.error ?? "Please wait before creating another room",
         });
         return;
       }
@@ -175,7 +202,11 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
     }
 
     const connectedPlayers = joinedRoom.players.filter((p) => p.connected);
-    if (joinedRoom.settings.blitzEnabled && joinedRoom.gameState.status === "playing" && connectedPlayers.length === 2) {
+    if (
+      joinedRoom.settings.blitzEnabled &&
+      joinedRoom.gameState.status === "playing" &&
+      connectedPlayers.length === 2
+    ) {
       startBlitzTimer(io, roomId);
     }
   });
@@ -191,7 +222,10 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
     const clientIp = socket.data.clientIp;
 
     if (!roomId || !playerColor || !playerId) {
-      socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
+      socket.emit("room:error", {
+        code: "NOT_IN_ROOM",
+        message: "Not in a room",
+      });
       return;
     }
 
@@ -208,7 +242,10 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
 
     const room = roomManager.getRoom(roomId);
     if (!room) {
-      socket.emit("room:error", { code: "ROOM_NOT_FOUND", message: "Room not found" });
+      socket.emit("room:error", {
+        code: "ROOM_NOT_FOUND",
+        message: "Room not found",
+      });
       return;
     }
 
@@ -218,35 +255,64 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
     }
 
     if (room.gameState.currentPlayer !== playerColor) {
-      socket.emit("room:error", { code: "NOT_YOUR_TURN", message: "Not your turn" });
+      socket.emit("room:error", {
+        code: "NOT_YOUR_TURN",
+        message: "Not your turn",
+      });
       return;
     }
 
     const owner = getPieceOwner(from, room.gameState);
     if (owner !== playerColor) {
-      socket.emit("room:error", { code: "NOT_YOUR_PIECE", message: "Not your piece" });
+      socket.emit("room:error", {
+        code: "NOT_YOUR_PIECE",
+        message: "Not your piece",
+      });
       return;
     }
 
     const validMoves = getValidMoves(from, room.gameState);
     if (!validMoves.includes(to)) {
-      socket.emit("room:error", { code: "INVALID_MOVE", message: "Invalid move" });
+      socket.emit("room:error", {
+        code: "INVALID_MOVE",
+        message: "Invalid move",
+      });
       return;
     }
 
-    const repetitionCheck = checkRepetition(from, to, room.gameState, room.settings.enabledRules);
+    const repetitionCheck = checkRepetition(
+      from,
+      to,
+      room.gameState,
+      room.settings.enabledRules
+    );
 
     let newState: GameState;
 
     if (repetitionCheck.shouldForfeit) {
       newState = forfeitGame(room.gameState, playerColor);
     } else if (repetitionCheck.shouldBlock) {
-      socket.emit("room:error", { code: "MOVE_BLOCKED", message: "Move blocked due to repetition" });
+      socket.emit("room:error", {
+        code: "MOVE_BLOCKED",
+        message: "Move blocked due to repetition",
+      });
       return;
     } else if (repetitionCheck.shouldWarn) {
       newState = makeMoveWithWarning(from, to, room.gameState, true);
     } else {
       newState = makeMoveWithWarning(from, to, room.gameState, false);
+    }
+
+    // Explicit trap check: if current player cannot move, they lose
+    if (
+      newState.status === "playing" &&
+      !canPlayerMove(newState.currentPlayer, newState)
+    ) {
+      newState = {
+        ...newState,
+        status: newState.currentPlayer === "blue" ? "red_wins" : "blue_wins",
+        selectedPiece: null,
+      };
     }
 
     roomManager.updateGameState(roomId, newState);
@@ -269,7 +335,10 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
     const clientIp = socket.data.clientIp;
 
     if (!roomId || !playerId) {
-      socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
+      socket.emit("room:error", {
+        code: "NOT_IN_ROOM",
+        message: "Not in a room",
+      });
       return;
     }
 
@@ -286,14 +355,22 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
 
     const updated = roomManager.updateSettings(roomId, playerId, settings);
     if (!updated) {
-      socket.emit("room:error", { code: "NOT_HOST", message: "Only the host can change settings" });
+      socket.emit("room:error", {
+        code: "NOT_HOST",
+        message: "Only the host can change settings",
+      });
       return;
     }
 
     io.to(roomId).emit("game:settings", settings);
 
     const room = roomManager.getRoom(roomId);
-    if (room && settings.blitzEnabled && room.gameState.status === "playing" && room.players.length === 2) {
+    if (
+      room &&
+      settings.blitzEnabled &&
+      room.gameState.status === "playing" &&
+      room.players.length === 2
+    ) {
       startBlitzTimer(io, roomId);
     } else if (!settings.blitzEnabled) {
       clearRoomTimer(roomId);
@@ -306,7 +383,10 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
     const clientIp = socket.data.clientIp;
 
     if (!roomId || !playerId) {
-      socket.emit("room:error", { code: "NOT_IN_ROOM", message: "Not in a room" });
+      socket.emit("room:error", {
+        code: "NOT_IN_ROOM",
+        message: "Not in a room",
+      });
       return;
     }
 
@@ -323,7 +403,10 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
 
     const newState = roomManager.resetGame(roomId, playerId);
     if (!newState) {
-      socket.emit("room:error", { code: "NOT_HOST", message: "Only the host can reset the game" });
+      socket.emit("room:error", {
+        code: "NOT_HOST",
+        message: "Only the host can reset the game",
+      });
       return;
     }
 
@@ -345,11 +428,19 @@ export function handleSocketConnection(io: GameServer, socket: GameSocket) {
   });
 }
 
-function handleLeave(io: GameServer, socket: GameSocket, isDisconnect: boolean) {
+function handleLeave(
+  io: GameServer,
+  socket: GameSocket,
+  isDisconnect: boolean
+) {
   const playerId = socket.data.visiblePlayerId;
   const roomId = socket.data.roomId;
 
-  console.log(`Socket ${isDisconnect ? "disconnected" : "left"}: ${socket.id} (player: ${playerId})`);
+  console.log(
+    `Socket ${isDisconnect ? "disconnected" : "left"}: ${
+      socket.id
+    } (player: ${playerId})`
+  );
 
   if (!playerId) {
     socketToPlayer.delete(socket.id);
